@@ -1,0 +1,76 @@
+# std.jdll export manifest — consumed by jdll-bindgen / gen_std_abi
+library std
+
+time : () -> I32
+get_env : (Bytes) -> Bytes
+sleep : (I32) -> I32
+file_exists : (Bytes) -> Bool
+file_read : (Bytes) -> Bytes
+file_write : (Bytes, Bytes) -> Bool
+file_open : (Bytes) -> Abstract
+file_close : (Abstract) -> Bool
+file_read_handle : (Abstract) -> Bytes
+random_int : (I32, I32) -> I32
+md5 : (Bytes) -> Bytes
+bytes_concat : (Bytes...) -> Bytes
+
+date_now : () -> I32
+date_new : (Bytes) -> I32
+date_format : (I32, Bytes) -> Bytes
+date_utc_format : (I32, Bytes) -> Bytes
+date_get_tz : (I32) -> I32
+date_set_hour : (I32, I32, I32, I32) -> I32
+date_set_day : (I32, I32, I32, I32) -> I32
+
+unicode_validate : (Bytes) -> Bool
+unicode_length : (Bytes) -> I32
+unicode_get : (Bytes, I32) -> I32
+unicode_compare : (Bytes, Bytes) -> I32
+unicode_sub : (Bytes, I32, I32) -> Bytes
+unicode_from_codepoint : (I32) -> Bytes
+unicode_buf_new : (I32) -> Abstract
+unicode_buf_add : (Abstract, I32) -> Bool
+unicode_buf_bytes : (Abstract) -> Bytes
+unicode_buf_length : (Abstract) -> I32
+unicode_buf_size : (Abstract) -> I32
+
+regexp_compile : (Bytes, Bytes) -> Abstract
+regexp_source : (Abstract) -> Bytes
+regexp_flags : (Abstract) -> Bytes
+regexp_match_prefix : (Bytes, Abstract) -> Dynamic
+regexp_match_prefix_p : (Bytes, Abstract) -> Bool
+regexp_match : (Bytes, Abstract) -> Dynamic
+regexp_full_match : (Bytes, Abstract) -> Bool
+regexp_match_len : (Abstract) -> I32
+regexp_capture_count : (Abstract) -> I32
+regexp_capture_bytes : (Abstract, I32) -> Bytes
+regexp_capture_start : (Abstract, I32) -> I32
+regexp_capture_named : (Abstract, Bytes) -> Bytes
+regexp_replace : (Bytes, Abstract, Bytes) -> Bytes
+regexp_escape_literal : (Bytes) -> Bytes
+regexp_advance : (Bytes, Abstract) -> Bytes
+
+process_run : (Bytes) -> Abstract
+process_pid : (Abstract) -> I32
+process_wait : (Abstract) -> I32
+process_kill : (Abstract) -> Bool
+process_read_stdout : (Abstract) -> Bytes
+process_read_stderr : (Abstract) -> Bytes
+process_write_stdin : (Abstract, Bytes) -> Bool
+process_close_stdin : (Abstract) -> Bool
+
+thread_spawn : (Function, Dynamic, Dynamic) -> Abstract
+thread_join : (Abstract) -> Dynamic
+thread_id : () -> I32
+
+channel_new : () -> Abstract
+channel_send : (Abstract, Dynamic) -> Bool
+channel_recv : (Abstract) -> Dynamic
+channel_try_recv : (Abstract) -> Dynamic
+channel_close : (Abstract) -> Bool
+
+poll_fd : (I32, I32, I32) -> I32
+wakeup_new : () -> Abstract
+wakeup_poll_fd : (Abstract) -> I32
+wakeup_signal : (Abstract) -> Bool
+wakeup_drain : (Abstract) -> Bool
