@@ -1,0 +1,37 @@
+# --- Build trees (prefer out-of-tree: cmake -S . -B build) ---
+build/
+cmake-build-*/
+out/
+
+# --- CMake configure / generate (in-source or stray files) ---
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+/Makefile
+*.ninja
+
+# --- CTest / CPack ---
+Testing/Temporary/
+
+# --- Binaries & objects (if built outside a ignored dir) ---
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+
+# compile_commands.json symlinked to repo root for clangd / tools
+/compile_commands.json
+
+# --- Tooling / OS ---
+.DS_Store
+.cache/
+.idea/
+.vs/
+*.swp
+*~
