@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    name: Build and stage VM (${{ matrix.os_name }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: linux
+            arch: x64
+          - runner: macos-latest
+            os_name: darwin
+            arch: arm64
+
+    steps:
+      - name: Checkout jellovm
+        uses: actions/checkout@v5
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DJELLOVM_BUILD_TESTS=OFF
+          -DJELLOVM_WARNINGS_AS_ERRORS=OFF
+
+      - name: Build
+        run: cmake --build build --target jellovm_cli --parallel
+
+      - name: Stage install tree
+        run: bash scripts/stage-vm.sh --build-dir build --prefix /tmp/jellovm-stage
+
+      - name: Package VM zip
+        run: |
+          VERSION="$(sed -n 's/^CMAKE_PROJECT_VERSION:STATIC=\(.*\)/\1/p' build/CMakeCache.txt | head -n 1)"
+          bash scripts/package-vm.sh \
+            --version "$VERSION" \
+            --os "${{ matrix.os_name }}" \
+            --arch "${{ matrix.arch }}" \
+            --build-dir build \
+            --out-dir dist
+
+      - name: Upload VM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: jellovm-${{ matrix.os_name }}-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
