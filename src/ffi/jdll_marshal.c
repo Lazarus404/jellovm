@@ -90,7 +90,15 @@ jello_object* jdl_arg_object(jdlo_ctx* c, int index) {
 
 jello_array* jdl_arg_array(jdlo_ctx* c, int index) {
   if(jdl_bad_arg(c, index)) return NULL;
-  return (jello_array*)vm_load_ptr(jdl_caller_rf(c), jdl_arg_reg(c, index));
+  exec_ctx* x = c->xctx;
+  uint32_t r = jdl_arg_reg(c, index);
+  if(vm_reg_kind(x->m, c->caller_f, r) == JELLO_T_DYNAMIC) {
+    jello_value v = vm_load_val(jdl_caller_rf(c), r);
+    if(jello_is_ptr(v) && jello_obj_kind_of(v) == (uint32_t)JELLO_OBJ_ARRAY)
+      return (jello_array*)jello_as_ptr(v);
+    return NULL;
+  }
+  return (jello_array*)vm_load_ptr(jdl_caller_rf(c), r);
 }
 
 jello_list* jdl_arg_list(jdlo_ctx* c, int index) {
@@ -283,6 +291,32 @@ static int jdl_validate_args(jdlo_ctx* c, const jdll_prim_caps* caps) {
       uint32_t r = c->first_arg_reg + i;
       jello_type_kind got = vm_reg_kind(x->m, x->f, r);
       if(!jdl_arg_kind_compatible(want, got)) {
+        jdl_fail(c, "jdll arg type mismatch");
+        return 0;
+      }
+    }
+    return 1;
+  }
+  if(caps->arity == JDLL_ABI_MIXED_VARARGS_ARITY) {
+    uint8_t nfixed = caps->arg_kinds[0];
+    jello_type_kind elem = (jello_type_kind)caps->arg_kinds[nfixed + 1];
+    if(c->nargs < nfixed) {
+      jdl_fail(c, "jdll arg count mismatch");
+      return 0;
+    }
+    for(uint8_t i = 0; i < nfixed; i++) {
+      uint32_t r = c->first_arg_reg + i;
+      jello_type_kind want = (jello_type_kind)caps->arg_kinds[1 + i];
+      jello_type_kind got = vm_reg_kind(x->m, x->f, r);
+      if(!jdl_arg_kind_compatible(want, got)) {
+        jdl_fail(c, "jdll arg type mismatch");
+        return 0;
+      }
+    }
+    for(uint32_t i = nfixed; i < c->nargs; i++) {
+      uint32_t r = c->first_arg_reg + i;
+      jello_type_kind got = vm_reg_kind(x->m, x->f, r);
+      if(!jdl_arg_kind_compatible(elem, got)) {
         jdl_fail(c, "jdll arg type mismatch");
         return 0;
       }

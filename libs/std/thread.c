@@ -41,11 +41,27 @@ void jdll_std_thread_spawn(jdlo_ctx* c) {
     return;
   }
 
-  jello_value args[2];
-  args[0] = (jello_value)(uintptr_t)jdl_arg_value(c, 1);
-  args[1] = (jello_value)(uintptr_t)jdl_arg_value(c, 2);
+  int n = jdl_arg_count(c);
+  if(n < 1) {
+    jdl_fail(c, "thread_spawn: expected function");
+    return;
+  }
 
-  jello_thread* t = jello_thread_spawn_fn(vm, m, fn, args, 2);
+  uint32_t nargs = (uint32_t)(n - 1);
+  jello_value* args = NULL;
+  if(nargs) {
+    args = (jello_value*)malloc((size_t)nargs * sizeof(jello_value));
+    if(!args) {
+      jdl_fail(c, "thread_spawn: oom");
+      return;
+    }
+    for(uint32_t i = 0; i < nargs; i++) {
+      args[i] = (jello_value)(uintptr_t)jdl_arg_value(c, (int)(i + 1));
+    }
+  }
+
+  jello_thread* t = jello_thread_spawn_fn(vm, m, fn, args, nargs);
+  free(args);
   if(!t) {
     jdl_fail(c, "thread_spawn: failed (captures, native fn, or bad args)");
     return;

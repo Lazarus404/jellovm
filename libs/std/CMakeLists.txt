@@ -1,19 +1,23 @@
 # std.jdll — Neko std.ndll subset
 
 include("${CMAKE_CURRENT_LIST_DIR}/pcre2.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/usrsctp.cmake")
 
 jello_jdll_embed_abi("${CMAKE_CURRENT_SOURCE_DIR}/std.jdll.abi" _std_abi_embed_c)
 
 add_library(std_jdll SHARED
-  init.c sys.c file.c process.c thread.c channel.c task.c random.c md5.c concat.c date.c unicode.c regexp.c
+  init.c sys.c file.c process.c thread.c channel.c task.c poll.c io_common.c net.c tls_crypto.c tls_io.c sctp.c random.c md5.c concat.c date.c unicode.c regexp.c
   "${_std_abi_embed_c}"
 )
 target_include_directories(std_jdll PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../../src/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}"
   "${pcre2_SOURCE_DIR}/src"
+  "${usrsctp_SOURCE_DIR}/usrsctplib"
 )
 
-target_link_libraries(std_jdll PRIVATE pcre2-8)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(std_jdll PRIVATE pcre2-8 OpenSSL::SSL OpenSSL::Crypto usrsctp)
 
 set_target_properties(std_jdll PROPERTIES
   OUTPUT_NAME "std"

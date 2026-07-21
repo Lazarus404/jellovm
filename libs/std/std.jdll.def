@@ -59,7 +59,7 @@ process_read_stderr : (Abstract) -> Bytes
 process_write_stdin : (Abstract, Bytes) -> Bool
 process_close_stdin : (Abstract) -> Bool
 
-thread_spawn : (Function, Dynamic, Dynamic) -> Abstract
+thread_spawn : (Function, Dynamic...) -> Abstract
 thread_join : (Abstract) -> Dynamic
 thread_id : () -> I32
 
@@ -70,7 +70,75 @@ channel_try_recv : (Abstract) -> Dynamic
 channel_close : (Abstract) -> Bool
 
 poll_fd : (I32, I32, I32) -> I32
+poll_many : (Dynamic, I32, I32) -> I32
+monotonic_ms : () -> I32
+io_trap : (Bytes, Bytes) -> Bool
 wakeup_new : () -> Abstract
 wakeup_poll_fd : (Abstract) -> I32
 wakeup_signal : (Abstract) -> Bool
 wakeup_drain : (Abstract) -> Bool
+
+addr_parse : (Bytes) -> Abstract
+addr_resolve : (Bytes, I32) -> Dynamic
+addr_host : (Dynamic) -> Bytes
+addr_port : (Dynamic) -> I32
+addr_is_abstract : (Dynamic) -> Bool
+udp_bind : (Abstract) -> Abstract
+udp_try_recv_from : (Abstract, I32) -> Dynamic
+udp_send_to : (Abstract, Bytes, Abstract, I32) -> I32
+udp_poll_fd : (Abstract) -> I32
+udp_close : (Abstract) -> Bool
+udp_set_broadcast : (Abstract, Bool) -> Bool
+tcp_connect : (Abstract) -> Abstract
+tcp_connect_timeout : (Abstract, I32) -> Abstract
+tcp_listen : (Abstract, I32) -> Abstract
+tcp_accept : (Abstract) -> Dynamic
+tcp_try_read : (Abstract, I32) -> Dynamic
+tcp_try_write : (Abstract, Bytes) -> I32
+tcp_poll_fd : (Abstract) -> I32
+tcp_bound_port : (Abstract) -> I32
+tcp_close : (Abstract) -> Bool
+tcp_shutdown : (Abstract, I32) -> Bool
+tcp_local_addr : (Abstract) -> Dynamic
+tcp_remote_addr : (Abstract) -> Dynamic
+tcp_set_nodelay : (Abstract, Bool) -> Bool
+tcp_set_keepalive : (Abstract, Bool) -> Bool
+net_probe_port : (I32, I32) -> I32
+net_probe_port_pair : (I32, I32) -> I32
+
+pem_decode : (Bytes) -> Dynamic
+x509_parse : (Bytes) -> Dynamic
+x509_verify_chain : (Bytes, Abstract) -> Bool
+tls_context_new : (Dynamic) -> Abstract
+tls_context_set_ca : (Abstract, Bytes) -> Bool
+tls_context_set_cert_chain : (Abstract, Bytes) -> Bool
+tls_context_set_private_key : (Abstract, Bytes) -> Bool
+tls_context_set_alpn : (Abstract, Bytes) -> Bool
+tls_context_set_sni : (Abstract, Bytes) -> Bool
+
+tls_stream_client : (Abstract, Abstract) -> Abstract
+tls_stream_server : (Abstract, Abstract) -> Abstract
+tls_handshake : (Abstract) -> I32
+tls_try_read : (Abstract, I32) -> Dynamic
+tls_try_write : (Abstract, Bytes) -> I32
+tls_poll_fd : (Abstract) -> I32
+tls_close : (Abstract) -> Bool
+
+dtls_stream_client : (Abstract, Abstract, Abstract) -> Abstract
+dtls_stream_server : (Abstract, Abstract) -> Abstract
+dtls_handshake : (Abstract) -> I32
+dtls_try_read : (Abstract, I32) -> Dynamic
+dtls_try_write : (Abstract, Bytes) -> I32
+dtls_poll_fd : (Abstract) -> I32
+dtls_close : (Abstract) -> Bool
+
+sctp_set_encaps_port : (I32) -> Bool
+sctp_bind : (Abstract) -> Abstract
+sctp_connect : (Abstract) -> Abstract
+sctp_connect_timeout : (Abstract, I32) -> Abstract
+sctp_try_accept : (Abstract) -> Dynamic
+sctp_try_recv : (Abstract, I32) -> Dynamic
+sctp_try_send : (Abstract, Bytes, I32, I32) -> I32
+sctp_poll_fd : (Abstract) -> I32
+sctp_close : (Abstract) -> Bool
+sctp_bound_port : (Abstract) -> I32

@@ -106,6 +106,8 @@ void jdll_std_wakeup_drain(jdlo_ctx* c) {
 #else
 
 #include <poll.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -162,12 +164,19 @@ void jdll_std_poll_fd(jdlo_ctx* c) {
   jdl_return_i32(c, out);
 }
 
+static int wakeup_set_nonblocking(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if(flags < 0) return 0;
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+
 void jdll_std_wakeup_new(jdlo_ctx* c) {
   int fds[2];
   if(pipe(fds) != 0) {
     jdl_fail(c, "wakeup_new: pipe failed");
     return;
   }
+  (void)wakeup_set_nonblocking(fds[0]);
 
   jdll_wakeup* w = (jdll_wakeup*)calloc(1, sizeof(*w));
   if(!w) {
@@ -210,6 +219,10 @@ void jdll_std_wakeup_drain(jdlo_ctx* c) {
   char buf[64];
   ssize_t n = read(w->read_fd, buf, sizeof buf);
   if(n < 0) {
+    if(errno == EAGAIN || errno == EWOULDBLOCK) {
+      jdl_return_bool(c, 0);
+      return;
+    }
     jdl_fail(c, "wakeup_drain: read failed");
     return;
   }

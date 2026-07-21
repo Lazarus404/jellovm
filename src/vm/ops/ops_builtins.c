@@ -136,7 +136,16 @@ static jello_bytes* value_to_bytes(exec_ctx* ctx, uint32_t dst_reg, jello_value 
     if(out && src && src->length) memcpy(out->data, src->data, src->length);
     return out;
   } else if(jello_is_atom(v)) {
-    n = snprintf(buf, sizeof buf, "atom:%u", jello_as_atom(v));
+    uint32_t aid = jello_as_atom(v);
+    const jello_bc_module* m = ctx->m;
+    if(m && aid < m->natoms && m->atoms[aid]) {
+      const char* name = m->atoms[aid];
+      size_t len = strlen(name);
+      jello_bytes* out = jello_bytes_new(vm, type_id, (uint32_t)len);
+      if(out && len > 0) memcpy(out->data, name, len);
+      return out;
+    }
+    n = snprintf(buf, sizeof buf, "atom:%u", aid);
   } else if(jello_is_ptr(v) && jello_obj_kind_of(v) == (uint32_t)JELLO_OBJ_ENUM) {
     jello_enum* e = (jello_enum*)jello_as_ptr(v);
     n = snprintf(buf, sizeof buf, "enum:%u", e ? e->tag : 0u);
@@ -394,10 +403,14 @@ static void native_deep_equal(exec_ctx* ctx, const jello_insn* ins, uint32_t fir
   uint32_t eq_atom = vm_module_atom_id_or_default(m, "equal", JELLO_ATOM_EQUAL);
   uint32_t diff_atom = vm_module_atom_id_or_default(m, "diff", JELLO_ATOM_DIFF);
   jello_object_set(o, eq_atom, jello_make_bool(eq ? 1 : 0));
-  uint32_t bytes_tid = module_bytes_type_id(m);
-  jello_bytes* diff = jello_bytes_new(vm, bytes_tid, (uint32_t)strlen(diff_buf));
-  if(diff && diff_buf[0]) memcpy(diff->data, diff_buf, strlen(diff_buf));
-  jello_object_set(o, diff_atom, jello_from_ptr(diff));
+  if(eq) {
+    jello_object_set(o, diff_atom, jello_make_null());
+  } else {
+    uint32_t bytes_tid = module_bytes_type_id(m);
+    jello_bytes* diff = jello_bytes_new(vm, bytes_tid, (uint32_t)strlen(diff_buf));
+    if(diff && diff_buf[0]) memcpy(diff->data, diff_buf, strlen(diff_buf));
+    jello_object_set(o, diff_atom, jello_from_ptr(diff));
+  }
   vm_store_ptr(&fr->rf, ins->a, o);
 }
 

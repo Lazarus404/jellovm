@@ -37,6 +37,7 @@ static inline reg_frame* jdl_caller_rf(jdlo_ctx* c) {
 typedef void (*jdll_export_fn)(jdlo_ctx* c);
 
 #define JDLL_ABI_VARARGS_ARITY 255u
+#define JDLL_ABI_MIXED_VARARGS_ARITY 254u
 
 typedef struct jdll_prim_caps {
   jdll_export_fn fn;

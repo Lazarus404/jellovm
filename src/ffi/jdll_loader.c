@@ -22,6 +22,7 @@ typedef struct {
   uint8_t* ret_kinds;
   uint8_t* arities;
   uint8_t** arg_kinds;
+  uint8_t* arg_kind_lens;
 } jdll_abi_parsed;
 
 static void free_jdll_abi(jdll_abi_parsed* abi);
@@ -181,7 +182,9 @@ static int parse_jdll_abi_bytes(const uint8_t* data, size_t blen, jdll_abi_parse
   abi->ret_kinds = (uint8_t*)calloc(abi->n_exports, sizeof(uint8_t));
   abi->arities = (uint8_t*)calloc(abi->n_exports, sizeof(uint8_t));
   abi->arg_kinds = (uint8_t**)calloc(abi->n_exports, sizeof(uint8_t*));
-  if(!abi->export_names || !abi->export_syms || !abi->ret_kinds || !abi->arities || !abi->arg_kinds) {
+  abi->arg_kind_lens = (uint8_t*)calloc(abi->n_exports, sizeof(uint8_t));
+  if(!abi->export_names || !abi->export_syms || !abi->ret_kinds || !abi->arities || !abi->arg_kinds ||
+     !abi->arg_kind_lens) {
     return 0;
   }
   for(uint32_t e = 0; e < abi->n_exports; e++) {
@@ -196,11 +199,22 @@ static int parse_jdll_abi_bytes(const uint8_t* data, size_t blen, jdll_abi_parse
       abi->arg_kinds[e] = (uint8_t*)malloc(1);
       if(!abi->arg_kinds[e]) return 0;
       abi->arg_kinds[e][0] = data[i++];
+      abi->arg_kind_lens[e] = 1;
+    } else if(abi->arities[e] == JDLL_ABI_MIXED_VARARGS_ARITY) {
+      if(i + 1 > blen) return 0;
+      uint8_t n = data[i++];
+      if(n == 0 || i + n > blen) return 0;
+      abi->arg_kinds[e] = (uint8_t*)malloc(n);
+      if(!abi->arg_kinds[e]) return 0;
+      memcpy(abi->arg_kinds[e], data + i, n);
+      abi->arg_kind_lens[e] = n;
+      i += n;
     } else if(abi->arities[e]) {
       abi->arg_kinds[e] = (uint8_t*)malloc(abi->arities[e]);
       if(!abi->arg_kinds[e]) return 0;
       if(i + abi->arities[e] > blen) return 0;
       memcpy(abi->arg_kinds[e], data + i, abi->arities[e]);
+      abi->arg_kind_lens[e] = abi->arities[e];
       i += abi->arities[e];
     }
   }
@@ -279,6 +293,7 @@ static void free_jdll_abi(jdll_abi_parsed* abi) {
   free(abi->export_syms);
   free(abi->ret_kinds);
   free(abi->arities);
+  free(abi->arg_kind_lens);
   free(abi->arg_kinds);
   memset(abi, 0, sizeof(*abi));
 }
@@ -386,6 +401,34 @@ int jello_jdll_fill_exports(exec_ctx* ctx, uint32_t exports_reg, uint32_t key_re
     };
     if(abi.arities[i] == JDLL_ABI_VARARGS_ARITY) {
       if(abi.arg_kinds[i]) caps.arg_kinds[0] = abi.arg_kinds[i][0];
+    } else if(abi.arities[i] == JDLL_ABI_MIXED_VARARGS_ARITY && abi.arg_kinds[i]) {
+      uint8_t ntypes = abi.arg_kind_lens[i];
+      if(ntypes < 2) {
+        char msg[384];
+        snprintf(msg, sizeof msg, "jdll '%s': export '%s' mixed varargs needs fixed prefix + elem types",
+                 key, abi.export_names[i]);
+        free(export_name);
+        free(export_sym);
+        free(lib_id);
+        free_jdll_abi(&abi);
+        (void)jello_vm_trap(vm, JELLO_TRAP_TYPE_MISMATCH, msg);
+        return 0;
+      }
+      uint8_t nfixed = (uint8_t)(ntypes - 1u);
+      if(nfixed > 6u) {
+        char msg[384];
+        snprintf(msg, sizeof msg,
+                 "jdll '%s': export '%s' mixed varargs fixed prefix too long (max 6)",
+                 key, abi.export_names[i]);
+        free(export_name);
+        free(export_sym);
+        free(lib_id);
+        free_jdll_abi(&abi);
+        (void)jello_vm_trap(vm, JELLO_TRAP_TYPE_MISMATCH, msg);
+        return 0;
+      }
+      caps.arg_kinds[0] = nfixed;
+      memcpy(&caps.arg_kinds[1], abi.arg_kinds[i], ntypes);
     } else if(abi.arities[i] && abi.arg_kinds[i]) {
       memcpy(caps.arg_kinds, abi.arg_kinds[i], abi.arities[i]);
     }
