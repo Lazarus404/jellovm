@@ -3,14 +3,22 @@
 
 #include <jello/internal/jdll_internal.h>
 
-#include <dlfcn.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
+
+#if defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  include <windows.h>
+#else
+#  include <dlfcn.h>
+#  include <unistd.h>
+#endif
 
 #define JDLL_ABI_MAGIC "JLYDLLABI1"
 
@@ -52,25 +60,53 @@ static void sl_free(str_list* sl) {
   sl->len = sl->cap = 0;
 }
 
+static int path_is_sep(char c) {
+#if defined(_WIN32)
+  return c == '/' || c == '\\';
+#else
+  return c == '/';
+#endif
+}
+
+static const char* path_last_sep(const char* path) {
+  if(!path) return NULL;
+  const char* last = NULL;
+  for(const char* p = path; *p; p++) {
+    if(path_is_sep(*p)) last = p;
+  }
+  return last;
+}
+
 static int path_is_file(const char* path) {
   struct stat st;
+#if defined(_WIN32)
+  return path && stat(path, &st) == 0 && (st.st_mode & _S_IFREG) != 0;
+#else
   return path && stat(path, &st) == 0 && S_ISREG(st.st_mode);
+#endif
 }
 
 static char* path_join2(const char* a, const char* b) {
   size_t la = strlen(a), lb = strlen(b);
-  int need_slash = (la > 0 && a[la - 1] != '/');
+  int need_slash = (la > 0 && !path_is_sep(a[la - 1]));
   size_t n = la + lb + (size_t)need_slash + 1u;
   char* out = (char*)malloc(n);
   if(!out) return NULL;
-  if(need_slash) snprintf(out, n, "%s/%s", a, b);
-  else snprintf(out, n, "%s%s", a, b);
+  if(need_slash) {
+#if defined(_WIN32)
+    snprintf(out, n, "%s\\%s", a, b);
+#else
+    snprintf(out, n, "%s/%s", a, b);
+#endif
+  } else {
+    snprintf(out, n, "%s%s", a, b);
+  }
   return out;
 }
 
 static char* path_dirname_dup(const char* path) {
   if(!path) return NULL;
-  const char* slash = strrchr(path, '/');
+  const char* slash = path_last_sep(path);
   if(!slash) {
     char* dot = (char*)malloc(2);
     if(dot) { dot[0] = '.'; dot[1] = 0; }
@@ -84,6 +120,52 @@ static char* path_dirname_dup(const char* path) {
   out[n] = 0;
   return out;
 }
+
+#if defined(_WIN32)
+static void* jdll_dlopen(const char* path) {
+  return (void*)LoadLibraryA(path);
+}
+
+static void* jdll_dlsym(void* handle, const char* sym) {
+  if(!handle) return NULL;
+  FARPROC p = GetProcAddress((HMODULE)handle, sym);
+  void* out = NULL;
+  memcpy(&out, &p, sizeof(out));
+  return out;
+}
+
+static void jdll_dlerror_msg(char* buf, size_t cap) {
+  if(!buf || cap == 0) return;
+  DWORD err = GetLastError();
+  if(err == 0) {
+    snprintf(buf, cap, "LoadLibrary failed");
+    return;
+  }
+  DWORD n = FormatMessageA(
+    FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+    NULL, err, 0, buf, (DWORD)cap, NULL);
+  if(n == 0) {
+    snprintf(buf, cap, "Win32 error %lu", (unsigned long)err);
+    return;
+  }
+  while(n > 0 && (buf[n - 1] == '\r' || buf[n - 1] == '\n' || buf[n - 1] == ' ')) {
+    buf[--n] = 0;
+  }
+}
+#else
+static void* jdll_dlopen(const char* path) {
+  return dlopen(path, RTLD_NOW | RTLD_LOCAL);
+}
+
+static void* jdll_dlsym(void* handle, const char* sym) {
+  return dlsym(handle, sym);
+}
+
+static void jdll_dlerror_msg(char* buf, size_t cap) {
+  const char* dl_err = dlerror();
+  snprintf(buf, cap, "%s", dl_err ? dl_err : "dlopen failed");
+}
+#endif
 
 const char* jello_discovery_entry_path(const char* argv_entry) {
   const char* env = getenv("JELLO_ENTRY_PATH");
@@ -99,7 +181,7 @@ static void collect_jdll_roots_c(const char* entry_path, str_list* out) {
   char* cur = strdup(dir);
   free(dir);
   for(int i = 0; i < 12 && cur; i++) {
-    char* slash = strrchr(cur, '/');
+    char* slash = (char*)path_last_sep(cur);
     if(!slash || slash == cur) break;
     *slash = 0;
     sl_push(out, path_join2(cur, "jdll"));
@@ -345,12 +427,13 @@ int jello_jdll_fill_exports(exec_ctx* ctx, uint32_t exports_reg, uint32_t key_re
   void* handle = NULL;
   static pthread_mutex_t jdll_dlopen_mu = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_lock(&jdll_dlopen_mu);
-  handle = dlopen(jdll_path, RTLD_NOW | RTLD_LOCAL);
+  handle = jdll_dlopen(jdll_path);
   pthread_mutex_unlock(&jdll_dlopen_mu);
   if(!handle) {
-    const char* dl_err = dlerror();
+    char errbuf[384];
+    jdll_dlerror_msg(errbuf, sizeof errbuf);
     char msg[512];
-    snprintf(msg, sizeof msg, "jdll '%s': %s", key, dl_err ? dl_err : "dlopen failed");
+    snprintf(msg, sizeof msg, "jdll '%s': %s", key, errbuf);
     free(jdll_path);
     free_jdll_abi(&abi);
     (void)jello_vm_trap(vm, JELLO_TRAP_TYPE_MISMATCH, msg);
@@ -368,7 +451,7 @@ int jello_jdll_fill_exports(exec_ctx* ctx, uint32_t exports_reg, uint32_t key_re
   for(uint32_t i = 0; i < abi.n_exports; i++) {
     uint32_t atom_id = find_atom_id(m, abi.export_names[i]);
     if(atom_id == UINT32_MAX) continue;
-    void* sym = dlsym(handle, abi.export_syms[i]);
+    void* sym = jdll_dlsym(handle, abi.export_syms[i]);
     jdll_export_fn fn;
     memcpy(&fn, &sym, sizeof(fn));
     if(!fn) {

@@ -2,6 +2,7 @@
 
 include("${CMAKE_CURRENT_LIST_DIR}/pcre2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/usrsctp.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/openssl.cmake")
 
 jello_jdll_embed_abi("${CMAKE_CURRENT_SOURCE_DIR}/std.jdll.abi" _std_abi_embed_c)
 
@@ -16,8 +17,10 @@ target_include_directories(std_jdll PRIVATE
   "${usrsctp_SOURCE_DIR}/usrsctplib"
 )
 
-find_package(OpenSSL REQUIRED)
 target_link_libraries(std_jdll PRIVATE pcre2-8 OpenSSL::SSL OpenSSL::Crypto usrsctp)
+if(WIN32)
+  target_link_libraries(std_jdll PRIVATE ws2_32 crypt32 bcrypt)
+endif()
 
 set_target_properties(std_jdll PROPERTIES
   OUTPUT_NAME "std"
@@ -50,3 +53,15 @@ add_custom_command(TARGET std_jdll POST_BUILD
           "$<TARGET_FILE_DIR:std_jdll>/std.jdll.abi"
   COMMENT "Copy std.jdll.abi next to std.jdll"
 )
+if(WIN32 AND JELLO_OPENSSL_BIN_DIR)
+  foreach(_dll IN ITEMS libssl-3-x64.dll libcrypto-3-x64.dll)
+    if(EXISTS "${JELLO_OPENSSL_BIN_DIR}/${_dll}")
+      add_custom_command(TARGET std_jdll POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${JELLO_OPENSSL_BIN_DIR}/${_dll}"
+                "$<TARGET_FILE_DIR:std_jdll>/${_dll}"
+        COMMENT "Copy ${_dll} next to std.jdll"
+      )
+    endif()
+  endforeach()
+endif()

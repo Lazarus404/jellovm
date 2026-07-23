@@ -7,6 +7,7 @@
 
 #if defined(_WIN32)
 #include <winsock2.h>
+#include <errno.h>
 #else
 #include <errno.h>
 #endif
@@ -28,7 +29,7 @@ const char* io_errno_code(int err) {
     case WSAECONNREFUSED: return "ECONNREFUSED";
     case WSAETIMEDOUT: return "ETIMEDOUT";
     case WSAEADDRINUSE: return "EADDRINUSE";
-    case WSAEPIPE: return "EPIPE";
+    case EPIPE: return "EPIPE";
     case WSAENOTCONN: return "ENOTCONN";
     case WSAESHUTDOWN: return "ESHUTDOWN";
     case WSAEMSGSIZE: return "EMSGSIZE";

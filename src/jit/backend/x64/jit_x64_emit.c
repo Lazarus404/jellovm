@@ -22,7 +22,8 @@ _Static_assert(offsetof(jello_box_i64, value) == 8u, "jello_box_i64.value");
 #define JIT_REG_BASE X64_R13
 #define JIT_REG_T0 X64_R14
 #define JIT_REG_T1 X64_R15
-#define JIT_REG_T2 X64_RBX
+#define JIT_REG_T2 X64_R10 /* scratch (RBX holds BB-local I32 cache) */
+#define JIT_REG_I32C X64_RBX
 
 #define JIT_FP_T0 0
 #define JIT_FP_T1 1
@@ -500,17 +501,15 @@ static int emit_cmp_set_i32(jello_jit_emit_buf* buf, jello_jit_ir_cmp cmp) {
   return x64_emit_movzx_r32_r8(buf, JIT_REG_T0, JIT_REG_T0);
 }
 
-/* T0 holds last stored I32 slot when *i32c_reg != NONE. */
+/* RBX holds last stored I32 slot when *i32c_reg != NONE (see arm64 JIT_REG_I32C). */
 static int emit_ldr_i32_t0(
     jello_jit_emit_buf* buf,
     const frame_layout* layout,
     uint16_t* i32c_reg,
     uint32_t src_reg
 ) {
-  if(*i32c_reg == src_reg) return 0;
-  if(emit_ldr_w_slot(buf, JIT_REG_T0, JIT_REG_BASE, slot_off(layout, src_reg)) != 0) return -1;
-  *i32c_reg = JIT_I32C_NONE; /* T0 loaded but not yet a committed store */
-  return 0;
+  if(*i32c_reg == src_reg) return emit_mov_r32_rr(buf, JIT_REG_T0, JIT_REG_I32C);
+  return emit_ldr_w_slot(buf, JIT_REG_T0, JIT_REG_BASE, slot_off(layout, src_reg));
 }
 
 static int emit_ldr_i32_t1(
@@ -519,7 +518,7 @@ static int emit_ldr_i32_t1(
     uint16_t* i32c_reg,
     uint32_t src_reg
 ) {
-  if(*i32c_reg == src_reg) return x64_emit_mov_rr(buf, JIT_REG_T1, JIT_REG_T0);
+  if(*i32c_reg == src_reg) return emit_mov_r32_rr(buf, JIT_REG_T1, JIT_REG_I32C);
   return emit_ldr_w_slot(buf, JIT_REG_T1, JIT_REG_BASE, slot_off(layout, src_reg));
 }
 
@@ -530,6 +529,7 @@ static int emit_str_i32_t0(
     uint32_t dst_reg
 ) {
   if(emit_str_w_slot(buf, JIT_REG_T0, JIT_REG_BASE, slot_off(layout, dst_reg)) != 0) return -1;
+  if(emit_mov_r32_rr(buf, JIT_REG_I32C, JIT_REG_T0) != 0) return -1;
   *i32c_reg = (uint16_t)dst_reg;
   return 0;
 }
@@ -616,13 +616,14 @@ static int emit_obj_get_atom(
   j_miss[n_miss++] = buf->size;
   if(x64_emit_jcc_rel32(buf, X64_CC_JZ) != 0) return -1;
 
-  if(x64_emit_load_r64_disp(buf, X64_RSI, JIT_REG_T1, JIT_OBJ_OFF_KEYS) != 0) return -1;
+  if(x64_emit_load_r64_disp(buf, X64_R10, JIT_REG_T1, JIT_OBJ_OFF_KEYS) != 0) return -1;
   if(x64_emit_load_r64_disp(buf, X64_RDX, JIT_REG_T1, JIT_OBJ_OFF_VALS) != 0) return -1;
   if(x64_emit_load_r64_disp(buf, X64_RCX, JIT_REG_T1, JIT_OBJ_OFF_STATES) != 0) return -1;
   if(x64_emit_load_r32_disp(buf, X64_R8, JIT_REG_T1, JIT_OBJ_OFF_CAP) != 0) return -1;
   if(x64_emit_sub_r32_imm(buf, X64_R8, 1) != 0) return -1; /* mask */
   if(emit_mov_r32_imm(buf, X64_R9, h0) != 0) return -1;
   if(emit_and_r32_rr(buf, X64_R9, X64_R8) != 0) return -1;
+  if(emit_mov_r32_rr(buf, X64_R11, X64_R9) != 0) return -1; /* i0 for wrap→miss */
 
   size_t loop_at = buf->size;
   /* state = states[i] */
@@ -639,7 +640,7 @@ static int emit_obj_get_atom(
   /* keys[i] == atom_id? */
   if(x64_emit_mov_rr(buf, X64_RAX, X64_R9) != 0) return -1;
   if(x64_emit_shl_r32_imm8(buf, X64_RAX, 2) != 0) return -1;
-  if(x64_emit_add_rr(buf, X64_RAX, X64_RSI) != 0) return -1;
+  if(x64_emit_add_rr(buf, X64_RAX, X64_R10) != 0) return -1;
   if(x64_emit_load_r32_disp(buf, X64_RAX, X64_RAX, 0) != 0) return -1;
   if(x64_emit_cmp_r32_imm(buf, X64_RAX, (int32_t)atom_id) != 0) return -1;
   size_t j_hit = buf->size;
@@ -649,6 +650,9 @@ static int emit_obj_get_atom(
   if(patch_jcc_rel32(buf, j_next, next_at) != 0) return -1;
   if(x64_emit_add_r32_imm(buf, X64_R9, 1) != 0) return -1;
   if(emit_and_r32_rr(buf, X64_R9, X64_R8) != 0) return -1;
+  if(emit_cmp_r32_rr(buf, X64_R9, X64_R11) != 0) return -1;
+  j_miss[n_miss++] = buf->size;
+  if(x64_emit_jcc_rel32(buf, X64_CC_JE) != 0) return -1;
   size_t j_loop = buf->size;
   if(x64_emit_jmp_rel32(buf) != 0) return -1;
   if(patch_jmp_rel32(buf, j_loop, loop_at) != 0) return -1;
@@ -860,9 +864,10 @@ static int emit_obj_set_atom(
     uint32_t atom_id
 ) {
   jello_type_kind k = vm_reg_kind(m, f, val_reg);
+  /* Match arm64: only inline scalar upserts; large atom imm → helper. */
   int inline_ok = (k == JELLO_T_F64 || k == JELLO_T_I64 || k == JELLO_T_I32 || k == JELLO_T_I8 ||
                    k == JELLO_T_I16);
-  if(!inline_ok || atom_id == JELLO_ATOM___PROTO__ || atom_id > 0x7FFFFFFFu)
+  if(!inline_ok || atom_id == JELLO_ATOM___PROTO__ || atom_id > 0xFFFu)
     return emit_obj_set_atom_helper(buf, val_reg, obj_reg, atom_id);
 
   uint32_t h0 = jit_obj_hash_u32(atom_id);
@@ -878,14 +883,15 @@ static int emit_obj_set_atom(
   j_slow[n_slow++] = buf->size;
   if(x64_emit_jcc_rel32(buf, X64_CC_JZ) != 0) return -1;
 
-  if(x64_emit_load_r64_disp(buf, X64_RSI, JIT_REG_T1, JIT_OBJ_OFF_KEYS) != 0) return -1;
+  /* Prefer Win64-volatile regs for table ptrs (avoid RSI/RDI). */
+  if(x64_emit_load_r64_disp(buf, X64_R10, JIT_REG_T1, JIT_OBJ_OFF_KEYS) != 0) return -1;
   if(x64_emit_load_r64_disp(buf, X64_RDX, JIT_REG_T1, JIT_OBJ_OFF_VALS) != 0) return -1;
   if(x64_emit_load_r64_disp(buf, X64_RCX, JIT_REG_T1, JIT_OBJ_OFF_STATES) != 0) return -1;
-  if(x64_emit_load_r32_disp(buf, X64_R10, JIT_REG_T1, JIT_OBJ_OFF_CAP) != 0) return -1; /* cap */
-  if(x64_emit_mov_rr(buf, X64_R8, X64_R10) != 0) return -1;
+  if(x64_emit_load_r32_disp(buf, X64_R8, JIT_REG_T1, JIT_OBJ_OFF_CAP) != 0) return -1;
   if(x64_emit_sub_r32_imm(buf, X64_R8, 1) != 0) return -1; /* mask */
   if(emit_mov_r32_imm(buf, X64_R9, h0) != 0) return -1;
   if(emit_and_r32_rr(buf, X64_R9, X64_R8) != 0) return -1;
+  if(emit_mov_r32_rr(buf, JIT_REG_T0, X64_R9) != 0) return -1; /* i0 for wrap→slow */
   if(emit_mov_r32_imm(buf, X64_R11, 0xFFFFFFFFu) != 0) return -1; /* first_tomb */
 
   if(x64_emit_load_r32_disp(buf, X64_RAX, JIT_REG_T1, JIT_OBJ_OFF_LEN) != 0) return -1;
@@ -907,7 +913,7 @@ static int emit_obj_set_atom(
   /* occupied: key match? */
   if(x64_emit_mov_rr(buf, X64_RAX, X64_R9) != 0) return -1;
   if(x64_emit_shl_r32_imm8(buf, X64_RAX, 2) != 0) return -1;
-  if(x64_emit_add_rr(buf, X64_RAX, X64_RSI) != 0) return -1;
+  if(x64_emit_add_rr(buf, X64_RAX, X64_R10) != 0) return -1;
   if(x64_emit_load_r32_disp(buf, X64_RAX, X64_RAX, 0) != 0) return -1;
   if(x64_emit_cmp_r32_imm(buf, X64_RAX, (int32_t)atom_id) != 0) return -1;
   size_t j_hit = buf->size;
@@ -929,6 +935,10 @@ static int emit_obj_set_atom(
   if(patch_jmp_rel32(buf, j_to_next, next_at) != 0) return -1;
   if(x64_emit_add_r32_imm(buf, X64_R9, 1) != 0) return -1;
   if(emit_and_r32_rr(buf, X64_R9, X64_R8) != 0) return -1;
+  /* Full probe lap with no empty/hit → C helper (grow/rehash). Prevents spin. */
+  if(emit_cmp_r32_rr(buf, X64_R9, JIT_REG_T0) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(x64_emit_jcc_rel32(buf, X64_CC_JE) != 0) return -1;
   size_t j_loop = buf->size;
   if(x64_emit_jmp_rel32(buf) != 0) return -1;
   if(patch_jmp_rel32(buf, j_loop, loop_at) != 0) return -1;
@@ -991,12 +1001,12 @@ static int emit_obj_set_atom(
   size_t use_i_at = buf->size;
   if(patch_jcc_rel32(buf, j_use_i, use_i_at) != 0) return -1;
 
-  /* load factor: (len+1)*10 < cap*7 */
+  /* load factor: (len+1)*10 < cap*7 (reload cap; R10 holds keys) */
   if(x64_emit_load_r32_disp(buf, X64_RAX, JIT_REG_T1, JIT_OBJ_OFF_LEN) != 0) return -1;
   if(x64_emit_add_r32_imm(buf, X64_RAX, 1) != 0) return -1;
   if(emit_mov_r32_imm(buf, X64_R8, (uint32_t)JELLO_OBJECT_LOAD_NUM) != 0) return -1;
   if(x64_emit_imul_r32(buf, X64_RAX, X64_R8) != 0) return -1;
-  if(x64_emit_mov_rr(buf, X64_R8, X64_R10) != 0) return -1;
+  if(x64_emit_load_r32_disp(buf, X64_R8, JIT_REG_T1, JIT_OBJ_OFF_CAP) != 0) return -1;
   if(emit_mov_r32_imm(buf, X64_R11, (uint32_t)JELLO_OBJECT_LOAD_DEN) != 0) return -1;
   if(x64_emit_imul_r32(buf, X64_R8, X64_R11) != 0) return -1;
   if(x64_emit_cmp_r32_rr(buf, X64_RAX, X64_R8) != 0) return -1;
@@ -1007,7 +1017,7 @@ static int emit_obj_set_atom(
     /* keys[i]=atom; states[i]=OCCUPIED; vals[i]=make_i32; len++ */
     if(x64_emit_mov_rr(buf, X64_RAX, X64_R9) != 0) return -1;
     if(x64_emit_shl_r32_imm8(buf, X64_RAX, 2) != 0) return -1;
-    if(x64_emit_add_rr(buf, X64_RAX, X64_RSI) != 0) return -1;
+    if(x64_emit_add_rr(buf, X64_RAX, X64_R10) != 0) return -1;
     if(emit_mov_r32_imm(buf, X64_R8, atom_id) != 0) return -1;
     if(x64_emit_store_r32_disp(buf, X64_R8, X64_RAX, 0) != 0) return -1;
     if(x64_emit_mov_rr(buf, X64_RAX, X64_R9) != 0) return -1;
@@ -1069,11 +1079,12 @@ static int emit_ir(
     const jello_jit_ir_insn* t = &ir->insns[j];
     if(t->op != JIR_JMP && t->op != JIR_JMP_IF) continue;
     uint32_t bc_tgt = (uint32_t)t->imm;
+    /* Match ir_off_for_bc: skip leading FUEL_CHECK at the target PC. */
     for(uint32_t k = 0; k < ir->ninsns; k++) {
-      if(ir->insns[k].bc_pc == bc_tgt) {
-        is_target[k] = 1u;
-        break;
-      }
+      if(ir->insns[k].bc_pc != bc_tgt) continue;
+      if(ir->insns[k].op == JIR_FUEL_CHECK) continue;
+      is_target[k] = 1u;
+      break;
     }
   }
   uint16_t i32c_reg = JIT_I32C_NONE;

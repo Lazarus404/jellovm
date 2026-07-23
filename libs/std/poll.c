@@ -9,8 +9,6 @@
 
 #include "win_pipe.h"
 
-#include <windows.h>
-
 void jdll_std_monotonic_ms(jdlo_ctx* c) {
   ULONGLONG ms = GetTickCount64();
   if(ms > (ULONGLONG)INT32_MAX) ms = (ULONGLONG)INT32_MAX;
