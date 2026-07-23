@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -20,7 +21,6 @@
 #include <usrsctp.h>
 
 #if defined(_WIN32)
-#include <stdio.h>
 #include "win_pipe.h"
 #include <io.h>
 #include <windows.h>
@@ -76,6 +76,16 @@ static void sctp_set_remote_encaps(struct socket* so) {
 static void sctp_enable_rcvinfo(struct socket* so) {
   int on = 1;
   (void)usrsctp_setsockopt(so, IPPROTO_SCTP, SCTP_RECVRCVINFO, &on, (socklen_t)sizeof on);
+}
+
+static void sctp_trace(const char* fmt, ...) {
+  if(!getenv("SCTP_TRACE")) return;
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fputc('\n', stderr);
+  fflush(stderr);
 }
 
 #if defined(_WIN32)
@@ -202,16 +212,6 @@ static int sctp_addr_is_loopback(const jdll_net_addr* addr) {
 }
 
 static void sctp_signal_poll(jdll_sctp_socket* s);
-
-static void sctp_trace(const char* fmt, ...) {
-  if(!getenv("SCTP_TRACE")) return;
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  va_end(ap);
-  fputc('\n', stderr);
-  fflush(stderr);
-}
 
 static void sctp_pending_clear(jdll_sctp_socket* s) {
   if(!s) return;
@@ -1005,7 +1005,11 @@ void jdll_std_sctp_try_accept(jdlo_ctx* c) {
     jdl_fail(c, "sctp_try_accept: bad listener");
     return;
   }
+#if defined(_WIN32)
   sctp_trace("sctp_try_accept: enter listener=%p pending=%p", (void*)sock, (void*)sock->pending_accept);
+#else
+  sctp_trace("sctp_try_accept: enter listener=%p", (void*)sock);
+#endif
 #if defined(_WIN32)
   if(sock->pending_accept) {
     jdll_sctp_socket* client = sock->pending_accept;
