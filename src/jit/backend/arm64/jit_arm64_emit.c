@@ -621,7 +621,7 @@ static int emit_obj_get_atom(
     if(jello_jit_emit_u32(buf, a64_cmp_w_imm(JIT_X_TMP, (uint16_t)JELLO_TAG_I32)) != 0) return -1;
     j_slow[n_slow++] = buf->size;
     if(jello_jit_emit_u32(buf, a64_b_ne(0)) != 0) return -1;
-    if(jello_jit_emit_u32(buf, a64_lsr_w_imm(JIT_REG_T0, JIT_X_BOX, 3)) != 0) return -1;
+    if(jello_jit_emit_u32(buf, a64_lsr_x_imm(JIT_REG_T0, JIT_X_BOX, 3)) != 0) return -1;
     if(emit_str_w_slot(buf, JIT_REG_T0, JIT_REG_BASE, slot_off(layout, dst)) != 0) return -1;
   } else if(k == JELLO_T_I64) {
     if(jello_jit_emit_u32(buf, a64_cmp_w_imm(JIT_X_TMP, (uint16_t)JELLO_TAG_NULL)) != 0) return -1;
@@ -644,7 +644,7 @@ static int emit_obj_get_atom(
     if(jello_jit_emit_u32(buf, a64_b(0)) != 0) return -1;
     size_t i32_at = buf->size;
     if(patch_cb(buf, j_i32, i32_at) != 0) return -1;
-    if(jello_jit_emit_u32(buf, a64_lsr_w_imm(JIT_REG_T0, JIT_X_BOX, 3)) != 0) return -1;
+    if(jello_jit_emit_u32(buf, a64_lsr_x_imm(JIT_REG_T0, JIT_X_BOX, 3)) != 0) return -1;
     /* sxtw x21, w21 */
     if(jello_jit_emit_u32(buf, 0x93407C00u | ((uint32_t)JIT_REG_T0 << 5) | (uint32_t)JIT_REG_T0) != 0)
       return -1;
