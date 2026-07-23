@@ -258,9 +258,18 @@ static inline uint32_t a64_orr_w_rr(uint8_t rd, uint8_t rn, uint8_t rm) {
   return 0x2A000000u | ((uint32_t)rm << 16) | ((uint32_t)rn << 5) | (uint32_t)rd;
 }
 
+static inline uint32_t a64_orr_x_rr(uint8_t rd, uint8_t rn, uint8_t rm) {
+  return 0xAA000000u | ((uint32_t)rm << 16) | ((uint32_t)rn << 5) | (uint32_t)rd;
+}
+
 /* ORR Wd, WZR, Wm, LSL #sh */
 static inline uint32_t a64_lsl_w_imm(uint8_t rd, uint8_t rm, uint8_t sh) {
   return 0x2A0003E0u | ((uint32_t)rm << 16) | ((uint32_t)sh << 10) | (uint32_t)rd;
+}
+
+/* ORR Xd, XZR, Xm, LSL #sh — required for jello_make_i32 (full pointer-width tag). */
+static inline uint32_t a64_lsl_x_imm(uint8_t rd, uint8_t rm, uint8_t sh) {
+  return 0xAA0003E0u | ((uint32_t)rm << 16) | ((uint32_t)sh << 10) | (uint32_t)rd;
 }
 
 /* ORR Wd, WZR, Wm, LSR #sh */

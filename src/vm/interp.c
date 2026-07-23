@@ -17,6 +17,19 @@ static void vm_capture_trap_stack(jello_vm* vm, jello_exec_status st) {
   vm_unwind_all_frames(vm);
 }
 
+static void vm_finish_exec(jello_vm* vm, jello_exec_status st, jello_value* out) {
+  if(st != JELLO_EXEC_OK) return;
+  vm_unwind_all_frames(vm);
+  vm->spill_len = 0;
+  uint32_t rooted = 0;
+  if(out && !jello_is_null(*out)) {
+    jello_gc_push_root(vm, *out);
+    rooted = 1;
+  }
+  jello_gc_collect(vm);
+  if(rooted) jello_gc_pop_roots(vm, 1);
+}
+
 static jello_exec_status exec_entry(jello_vm* vm, const jello_bc_module* m, const jello_bc_function* entry,
     jello_value* out, jello_value* out_exports, uint32_t entry_module_idx) {
   /* Reset per-run fuel. */
@@ -70,6 +83,7 @@ jello_exec_status jello_vm_exec_status_exports(jello_vm* vm, const jello_bc_modu
   jello_vm_bind_current(vm);
   jello_exec_status st = exec_entry(vm, m, f, out, out_exports, entry_module_idx);
   vm_capture_trap_stack(vm, st);
+  vm_finish_exec(vm, st, out);
   vm->running_module = NULL;
   return st;
 }
@@ -120,6 +134,7 @@ jello_exec_status jello_vm_exec_status_chunk(jello_vm* vm, const jello_bc_module
   jello_vm_bind_current(vm);
   jello_exec_status st = vm_exec_loop(&ctx);
   vm_capture_trap_stack(vm, st);
+  vm_finish_exec(vm, st, out);
   vm->running_module = NULL;
   return st;
 }
@@ -168,6 +183,7 @@ jello_exec_status jello_vm_exec_status_closure(jello_vm* vm, const jello_bc_modu
   jello_vm_bind_current(vm);
   jello_exec_status st = vm_exec_loop(&ctx);
   vm_capture_trap_stack(vm, st);
+  vm_finish_exec(vm, st, out);
   vm->running_module = NULL;
   return st;
 }

@@ -757,9 +757,10 @@ static int emit_obj_set_atom(
     if(jello_jit_emit_u32(buf, a64_str_x_uimm(JIT_REG_T0, JIT_X_BOX, 8)) != 0) return -1;
   } else {
     if(emit_ldr_w_slot(buf, JIT_REG_T0, JIT_REG_BASE, slot_off(layout, val_reg)) != 0) return -1;
-    if(jello_jit_emit_u32(buf, a64_lsl_w_imm(JIT_REG_T0, JIT_REG_T0, 3)) != 0) return -1;
+    /* jello_make_i32: LSL/ORR must be 64-bit or high payload bits of negative I32 are lost. */
+    if(jello_jit_emit_u32(buf, a64_lsl_x_imm(JIT_REG_T0, JIT_REG_T0, 3)) != 0) return -1;
     if(emit_mov_w_imm(buf, 0, (uint32_t)JELLO_TAG_I32) != 0) return -1;
-    if(jello_jit_emit_u32(buf, a64_orr_w_rr(JIT_REG_T0, JIT_REG_T0, 0)) != 0) return -1;
+    if(jello_jit_emit_u32(buf, a64_orr_x_rr(JIT_REG_T0, JIT_REG_T0, 0)) != 0) return -1;
     if(jello_jit_emit_u32(buf, a64_str_x_uimm(JIT_REG_T0, JIT_X_TMP, 0)) != 0) return -1;
   }
 

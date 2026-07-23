@@ -288,6 +288,33 @@ static inline int x64_emit_cmp_r32_imm(jello_jit_emit_buf* buf, int dst, int32_t
   return x64_emit_alu_r32_imm(buf, 7, dst, imm);
 }
 
+/* ALU r64, imm: /digit in ModRM.reg. Prefer imm8 (83) when imm fits signed 8-bit. */
+static inline int x64_emit_alu_r64_imm(jello_jit_emit_buf* buf, int digit, int dst, int32_t imm) {
+  int dlo = 0, drex = 0;
+  x64_reg_parts(dst, &dlo, &drex);
+  uint8_t bytes[8];
+  size_t n = 0;
+  bytes[n++] = x64_rex(1, 0, 0, drex);
+  if(imm >= -128 && imm <= 127) {
+    bytes[n++] = 0x83u;
+    bytes[n++] = x64_modrm(3, digit, dlo);
+    bytes[n++] = (uint8_t)(int8_t)imm;
+  } else {
+    bytes[n++] = 0x81u;
+    bytes[n++] = x64_modrm(3, digit, dlo);
+    uint32_t u = (uint32_t)imm;
+    bytes[n++] = (uint8_t)(u & 0xFFu);
+    bytes[n++] = (uint8_t)((u >> 8) & 0xFFu);
+    bytes[n++] = (uint8_t)((u >> 16) & 0xFFu);
+    bytes[n++] = (uint8_t)((u >> 24) & 0xFFu);
+  }
+  return jello_jit_emit_bytes(buf, bytes, n);
+}
+
+static inline int x64_emit_or_r64_imm(jello_jit_emit_buf* buf, int dst, int32_t imm) {
+  return x64_emit_alu_r64_imm(buf, 1, dst, imm);
+}
+
 /* shl r32, imm8 */
 static inline int x64_emit_shl_r32_imm8(jello_jit_emit_buf* buf, int dst, uint8_t imm) {
   int dlo = 0, drex = 0;
@@ -295,6 +322,19 @@ static inline int x64_emit_shl_r32_imm8(jello_jit_emit_buf* buf, int dst, uint8_
   uint8_t bytes[5];
   size_t n = 0;
   if(drex) bytes[n++] = x64_rex(0, 0, 0, drex);
+  bytes[n++] = 0xC1u;
+  bytes[n++] = x64_modrm(3, 4, dlo);
+  bytes[n++] = imm;
+  return jello_jit_emit_bytes(buf, bytes, n);
+}
+
+/* shl r64, imm8 — required for jello_make_i32 (shift must be pointer-width). */
+static inline int x64_emit_shl_r64_imm8(jello_jit_emit_buf* buf, int dst, uint8_t imm) {
+  int dlo = 0, drex = 0;
+  x64_reg_parts(dst, &dlo, &drex);
+  uint8_t bytes[5];
+  size_t n = 0;
+  bytes[n++] = x64_rex(1, 0, 0, drex);
   bytes[n++] = 0xC1u;
   bytes[n++] = x64_modrm(3, 4, dlo);
   bytes[n++] = imm;

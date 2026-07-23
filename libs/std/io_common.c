@@ -12,12 +12,31 @@
 #include <errno.h>
 #endif
 
-int io_last_errno(void) {
+int io_errno_value(void) {
+  return errno;
+}
+
+int io_winsock_errno(void) {
 #if defined(_WIN32)
-  return WSAGetLastError();
+  return (int)WSAGetLastError();
 #else
   return errno;
 #endif
+}
+
+int io_last_errno(void) {
+#if defined(_WIN32)
+  int wsa = (int)WSAGetLastError();
+  if(wsa != 0) return wsa;
+  if(errno != 0) return errno;
+  return 0;
+#else
+  return errno;
+#endif
+}
+
+void io_fail_winsock(jdlo_ctx* c, const char* op) {
+  io_fail_errno(c, op, io_winsock_errno());
 }
 
 const char* io_errno_code(int err) {
@@ -35,6 +54,13 @@ const char* io_errno_code(int err) {
     case WSAEMSGSIZE: return "EMSGSIZE";
     case WSAEHOSTUNREACH: return "EHOSTUNREACH";
     case WSAENETUNREACH: return "ENETUNREACH";
+    case WSAEINVAL: return "EINVAL";
+    case EHOSTUNREACH: return "EHOSTUNREACH";
+    case ENETUNREACH: return "ENETUNREACH";
+    case WSAEADDRNOTAVAIL: return "EADDRNOTAVAIL";
+    case EINVAL: return "EINVAL";
+    case EADDRNOTAVAIL: return "EADDRNOTAVAIL";
+    case EADDRINUSE: return "EADDRINUSE";
 #else
     case EWOULDBLOCK: return "EWOULDBLOCK";
 #if EAGAIN != EWOULDBLOCK

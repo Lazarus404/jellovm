@@ -982,8 +982,9 @@ static int emit_obj_set_atom(
     if(x64_emit_store_r64_disp(buf, X64_R8, X64_RCX, 8) != 0) return -1;
   } else {
     if(emit_ldr_w_slot(buf, X64_R8, JIT_REG_BASE, slot_off(layout, val_reg)) != 0) return -1;
-    if(x64_emit_shl_r32_imm8(buf, X64_R8, 3) != 0) return -1;
-    if(x64_emit_or_r32_imm(buf, X64_R8, (int32_t)JELLO_TAG_I32) != 0) return -1;
+    /* jello_make_i32: shift/or must be 64-bit or high payload bits of negative I32 are lost. */
+    if(x64_emit_shl_r64_imm8(buf, X64_R8, 3) != 0) return -1;
+    if(x64_emit_or_r64_imm(buf, X64_R8, (int32_t)JELLO_TAG_I32) != 0) return -1;
     if(x64_emit_store_r64_disp(buf, X64_R8, X64_RAX, 0) != 0) return -1;
   }
   j_done[n_done++] = buf->size;
@@ -1024,8 +1025,9 @@ static int emit_obj_set_atom(
     if(x64_emit_add_rr(buf, X64_RAX, X64_RCX) != 0) return -1;
     if(x64_emit_store_imm8_disp(buf, X64_RAX, 0, (uint8_t)JELLO_OBJ_SLOT_OCCUPIED) != 0) return -1;
     if(emit_ldr_w_slot(buf, X64_R8, JIT_REG_BASE, slot_off(layout, val_reg)) != 0) return -1;
-    if(x64_emit_shl_r32_imm8(buf, X64_R8, 3) != 0) return -1;
-    if(x64_emit_or_r32_imm(buf, X64_R8, (int32_t)JELLO_TAG_I32) != 0) return -1;
+    /* jello_make_i32: shift/or must be 64-bit or high payload bits of negative I32 are lost. */
+    if(x64_emit_shl_r64_imm8(buf, X64_R8, 3) != 0) return -1;
+    if(x64_emit_or_r64_imm(buf, X64_R8, (int32_t)JELLO_TAG_I32) != 0) return -1;
     if(x64_emit_mov_rr(buf, X64_RAX, X64_R9) != 0) return -1;
     if(x64_emit_shl_r32_imm8(buf, X64_RAX, 3) != 0) return -1;
     if(x64_emit_add_rr(buf, X64_RAX, X64_RDX) != 0) return -1;

@@ -7,6 +7,12 @@
 #include "net_internal.h"
 #include "io_common.h"
 
+#if defined(_WIN32)
+#define net_io_fail(c, op) io_fail_winsock(c, op)
+#else
+#define net_io_fail(c, op) io_fail(c, op)
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -171,7 +177,7 @@ static int net_ensure_wsa(void) {
 }
 
 static int net_last_would_block(void) {
-  int e = io_last_errno();
+  int e = io_winsock_errno();
   return e == WSAEWOULDBLOCK || e == WSAEINPROGRESS;
 }
 
@@ -369,7 +375,7 @@ static void net_tcp_connect_impl(jdlo_ctx* c, jdll_net_addr* addr, int32_t timeo
 #endif
   int fd = (int)socket(addr->ss.ss_family, SOCK_STREAM, IPPROTO_TCP);
   if(fd < 0) {
-    io_fail(c, "tcp_connect");
+    net_io_fail(c, "tcp_connect");
     return;
   }
   (void)net_set_nonblocking(fd);
@@ -380,7 +386,7 @@ static void net_tcp_connect_impl(jdlo_ctx* c, jdll_net_addr* addr, int32_t timeo
 #else
     close(fd);
 #endif
-    io_fail(c, "tcp_connect");
+    net_io_fail(c, "tcp_connect");
     return;
   }
   if(rc != 0) {
@@ -392,7 +398,7 @@ static void net_tcp_connect_impl(jdlo_ctx* c, jdll_net_addr* addr, int32_t timeo
       close(fd);
 #endif
       if(wr < 0) io_fail_code(c, "tcp_connect", "ETIMEDOUT");
-      else io_fail(c, "tcp_connect");
+      else net_io_fail(c, "tcp_connect");
       return;
     }
   }
@@ -433,7 +439,7 @@ void jdll_std_udp_bind(jdlo_ctx* c) {
   }
   int fd = net_bind_socket(addr, SOCK_DGRAM, NET_SOCK_UDP);
   if(fd < 0) {
-    io_fail(c, "udp_bind");
+    net_io_fail(c, "udp_bind");
     return;
   }
   jdll_net_socket* s = net_socket_new(fd, NET_SOCK_UDP, 0);
@@ -471,7 +477,7 @@ void jdll_std_udp_try_recv_from(jdlo_ctx* c) {
       jdl_return_null(c);
       return;
     }
-    io_fail(c, "udp_try_recv_from");
+    net_io_fail(c, "udp_try_recv_from");
     return;
   }
 
@@ -557,7 +563,7 @@ void jdll_std_udp_send_to(jdlo_ctx* c) {
       jdl_return_i32(c, 0);
       return;
     }
-    io_fail(c, "udp_send_to");
+    net_io_fail(c, "udp_send_to");
     return;
   }
   jdl_return_i32(c, (int32_t)n);
@@ -597,7 +603,7 @@ void jdll_std_tcp_listen(jdlo_ctx* c) {
   if(backlog <= 0) backlog = 128;
   int fd = net_bind_socket(addr, SOCK_STREAM, NET_SOCK_TCP);
   if(fd < 0) {
-    io_fail(c, "tcp_listen");
+    net_io_fail(c, "tcp_listen");
     return;
   }
   if(listen(fd, backlog) != 0) {
@@ -606,7 +612,7 @@ void jdll_std_tcp_listen(jdlo_ctx* c) {
 #else
     close(fd);
 #endif
-    io_fail(c, "tcp_listen");
+    net_io_fail(c, "tcp_listen");
     return;
   }
   jdll_net_socket* s = net_socket_new(fd, NET_SOCK_TCP, 1);
@@ -629,7 +635,7 @@ void jdll_std_tcp_accept(jdlo_ctx* c) {
       jdl_return_null(c);
       return;
     }
-    io_fail(c, "tcp_accept");
+    net_io_fail(c, "tcp_accept");
     return;
   }
   jdll_net_socket* client = net_socket_new(cfd, NET_SOCK_TCP, 0);
@@ -665,7 +671,7 @@ void jdll_std_tcp_try_read(jdlo_ctx* c) {
       jdl_return_null(c);
       return;
     }
-    io_fail(c, "tcp_try_read");
+    net_io_fail(c, "tcp_try_read");
     return;
   }
   if(n == 0) {
@@ -696,7 +702,7 @@ void jdll_std_tcp_try_write(jdlo_ctx* c) {
       jdl_return_i32(c, 0);
       return;
     }
-    io_fail(c, "tcp_try_write");
+    net_io_fail(c, "tcp_try_write");
     return;
   }
   jdl_return_i32(c, (int32_t)n);
@@ -720,7 +726,7 @@ void jdll_std_tcp_bound_port(jdlo_ctx* c) {
   struct sockaddr_storage ss;
   socklen_t len = sizeof ss;
   if(getsockname(sock->fd, (struct sockaddr*)&ss, &len) != 0) {
-    io_fail(c, "tcp_bound_port");
+    net_io_fail(c, "tcp_bound_port");
     return;
   }
   int port = 0;
@@ -749,12 +755,12 @@ void jdll_std_tcp_shutdown(jdlo_ctx* c) {
   }
 #if defined(_WIN32)
   if(shutdown((SOCKET)sock->fd, how) != 0) {
-    io_fail(c, "tcp_shutdown");
+    net_io_fail(c, "tcp_shutdown");
     return;
   }
 #else
   if(shutdown(sock->fd, how) != 0) {
-    io_fail(c, "tcp_shutdown");
+    net_io_fail(c, "tcp_shutdown");
     return;
   }
 #endif
@@ -770,7 +776,7 @@ void jdll_std_tcp_local_addr(jdlo_ctx* c) {
   struct sockaddr_storage ss;
   socklen_t len = sizeof ss;
   if(getsockname(sock->fd, (struct sockaddr*)&ss, &len) != 0) {
-    io_fail(c, "tcp_local_addr");
+    net_io_fail(c, "tcp_local_addr");
     return;
   }
   jello_object* rec = net_sockaddr_record(c, &ss);
@@ -790,7 +796,7 @@ void jdll_std_tcp_remote_addr(jdlo_ctx* c) {
   struct sockaddr_storage ss;
   socklen_t len = sizeof ss;
   if(getpeername(sock->fd, (struct sockaddr*)&ss, &len) != 0) {
-    io_fail(c, "tcp_remote_addr");
+    net_io_fail(c, "tcp_remote_addr");
     return;
   }
   jello_object* rec = net_sockaddr_record(c, &ss);
@@ -809,7 +815,7 @@ void jdll_std_tcp_set_nodelay(jdlo_ctx* c) {
     return;
   }
   if(setsockopt(sock->fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&on, (socklen_t)sizeof on) != 0) {
-    io_fail(c, "tcp_set_nodelay");
+    net_io_fail(c, "tcp_set_nodelay");
     return;
   }
   jdl_return_bool(c, 1);
@@ -823,7 +829,7 @@ void jdll_std_tcp_set_keepalive(jdlo_ctx* c) {
     return;
   }
   if(setsockopt(sock->fd, SOL_SOCKET, SO_KEEPALIVE, (const char*)&on, (socklen_t)sizeof on) != 0) {
-    io_fail(c, "tcp_set_keepalive");
+    net_io_fail(c, "tcp_set_keepalive");
     return;
   }
   jdl_return_bool(c, 1);
@@ -837,7 +843,7 @@ void jdll_std_udp_set_broadcast(jdlo_ctx* c) {
     return;
   }
   if(setsockopt(sock->fd, SOL_SOCKET, SO_BROADCAST, (const char*)&on, (socklen_t)sizeof on) != 0) {
-    io_fail(c, "udp_set_broadcast");
+    net_io_fail(c, "udp_set_broadcast");
     return;
   }
   jdl_return_bool(c, 1);

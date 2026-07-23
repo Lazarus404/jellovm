@@ -9,6 +9,8 @@
 
 #include "win_pipe.h"
 
+extern void jello_sctp_pump_timers(void);
+
 void jdll_std_monotonic_ms(jdlo_ctx* c) {
   ULONGLONG ms = GetTickCount64();
   if(ms > (ULONGLONG)INT32_MAX) ms = (ULONGLONG)INT32_MAX;
@@ -32,6 +34,7 @@ void jdll_std_poll_many(jdlo_ctx* c) {
 
   ULONGLONG start = GetTickCount64();
   for(;;) {
+    jello_sctp_pump_timers();
     for(uint32_t i = 0; i < n; i++) {
       jello_value v = jdl_array_get(fds_arr, i);
       if(!jello_is_i32(v)) continue;
@@ -51,7 +54,13 @@ void jdll_std_poll_many(jdlo_ctx* c) {
       jdl_return_i32(c, 0);
       return;
     }
-    if(timeout_ms > 0) {
+    if(timeout_ms < 0) {
+      ULONGLONG now = GetTickCount64();
+      if(now - start >= 10) {
+        jdl_return_i32(c, 0);
+        return;
+      }
+    } else if(timeout_ms > 0) {
       ULONGLONG now = GetTickCount64();
       if(now - start >= (ULONGLONG)timeout_ms) {
         jdl_return_i32(c, 0);
@@ -67,6 +76,8 @@ void jdll_std_poll_many(jdlo_ctx* c) {
 #include <errno.h>
 #include <poll.h>
 #include <time.h>
+
+extern void jello_sctp_pump_timers(void);
 
 void jdll_std_monotonic_ms(jdlo_ctx* c) {
   struct timespec ts;
@@ -115,6 +126,7 @@ void jdll_std_poll_many(jdlo_ctx* c) {
   }
 
   int rc = poll(pfds, (nfds_t)n, timeout_ms);
+  jello_sctp_pump_timers();
   if(rc < 0) {
     jdl_fail(c, "poll_many: poll failed");
     return;
