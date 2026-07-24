@@ -75,6 +75,7 @@ add_library(jellovm ${_jellovm_lib_type}
   src/vm/call.c
   src/vm/frame.c
   src/vm/exc.c
+  src/vm/profile.c
   src/vm/ops/dispatch.c
   src/vm/ops/exec_loop.c
   src/vm/ops/ops_control.c
@@ -111,6 +112,12 @@ add_library(jellovm ${_jellovm_lib_type}
 )
 
 if(JELLOVM_ENABLE_JIT)
+  if(MSVC)
+    message(FATAL_ERROR
+      "JELLOVM_ENABLE_JIT with MSVC is unsupported: x64 JIT emit uses SysV AMD64 "
+      "calling convention for runtime helpers. Use Clang/MinGW + Ninja (see "
+      "jello-compiler/release.ps1) or pass -DJELLOVM_ENABLE_JIT=OFF for MSVC embed builds.")
+  endif()
   set(_jellovm_jit_host_x64 FALSE)
   if(CMAKE_OSX_ARCHITECTURES)
     if("x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)

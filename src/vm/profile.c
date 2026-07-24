@@ -4,6 +4,7 @@
 #include <jello.h>
 #include <jello/internal.h>
 
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -154,6 +155,7 @@ static const char* const op_names[JOP_COUNT] = {
   [JOP_LT_F64] = "lt_f64",
   [JOP_TAILCALL] = "tailcall",
   [JOP_TAILCALLR] = "tailcallr",
+  [JOP_BYTES_EQ] = "bytes_eq",
 };
 
 void jello_vm_set_profile(jello_vm* vm, uint8_t enable) {

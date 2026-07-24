@@ -386,9 +386,10 @@ typedef enum jello_op {
   JOP_BYTES_WRITE_I32_BE = 158,
   JOP_BYTES_WRITE_F32_LE = 159,
   JOP_BYTES_WRITE_F32_BE = 160,
+  JOP_BYTES_EQ = 161,
 } jello_op;
 
-#define JOP_COUNT (JOP_BYTES_WRITE_F32_BE + 1)
+#define JOP_COUNT (JOP_BYTES_EQ + 1)
 
 #define JELLO_ATOM___PROTO__ 0u
 #define JELLO_ATOM_INIT 1u
@@ -585,15 +586,24 @@ typedef struct jello_object {
   uint32_t* keys;
   jello_value* vals;
   uint8_t* states;
+  /* Monomorphic field cache (invalidated when cap changes, e.g. rehash). */
+  uint32_t ic_atom;
+  uint32_t ic_slot;
+  uint32_t ic_cap;
+  /* Polymorphic IC entries 1..3 (entry 0 is ic_atom/ic_slot). JIT uses entry 0 only. */
+  uint32_t ic_poly_atom[3];
+  uint32_t ic_poly_slot[3];
 } jello_object;
 
 jello_object* jello_object_new(struct jello_vm* vm, uint32_t type_id);
 int jello_object_has(jello_object* o, uint32_t atom_id);
 jello_value jello_object_get(jello_object* o, uint32_t atom_id);
+jello_value jello_object_get_slot(jello_object* o, uint32_t slot, uint32_t atom_id);
 /* Returns pointer to occupied slot value, or NULL if missing. */
 jello_value* jello_object_slot(jello_object* o, uint32_t atom_id);
 /* Insert if missing (new slots start as null); return value slot. out_existed optional. */
 jello_value* jello_object_upsert(jello_object* o, uint32_t atom_id, int* out_existed);
+jello_value* jello_object_set_slot(jello_object* o, uint32_t slot, uint32_t atom_id, int* out_existed);
 void jello_object_set(jello_object* o, uint32_t atom_id, jello_value v);
 int jello_object_remove(jello_object* o, uint32_t atom_id);
 void jello_object_clear(jello_object* o);

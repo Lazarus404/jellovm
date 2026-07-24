@@ -1,0 +1,68 @@
+let pow2: I32 -> I32 = fn(k) {
+  let r: I32 = 1;
+  let i: I32 = 0;
+  while (i < k) {
+    r = r + r;
+    i = i + 1;
+  }
+  return r;
+};
+
+let tree_check: (I32, I32) -> I32 = fn(i, d) {
+  if (d == 0) { return i; 0 } else { 0 };
+  let n_nodes: I32 = pow2(d + 1) - 1;
+  let leaves_start: I32 = pow2(d) - 1;
+  let vals: Array<I32> = Array.new<I32>(n_nodes);
+  Array.set(vals, 0, i);
+  let idx: I32 = 0;
+  while (idx < leaves_start) {
+    let v: I32 = Array.get(vals, idx);
+    let v2: I32 = v + v;
+    let left: I32 = idx + idx + 1;
+    let right: I32 = left + 1;
+    Array.set(vals, left, v2 - 1);
+    Array.set(vals, right, v2);
+    idx = idx + 1;
+  }
+  let j: I32 = leaves_start - 1;
+  while (0 < j + 1) {
+    let v: I32 = Array.get(vals, j);
+    let left: I32 = j + j + 1;
+    let right: I32 = left + 1;
+    let res: I32 = v + Array.get(vals, left) - Array.get(vals, right);
+    Array.set(vals, j, res);
+    j = j - 1;
+  }
+  return Array.get(vals, 0);
+};
+
+let max_depth_const: I32 = 10;
+let min_depth: I32 = 4;
+let niter4: I32 = pow2(max_depth_const - 4 + min_depth);
+let c4: I32 = 0;
+let i4: I32 = 1;
+while (i4 < niter4 + 1) {
+  c4 = c4 + tree_check(i4, 4) + tree_check(-i4, 4);
+  i4 = i4 + 1;
+}
+
+let niter6: I32 = pow2(max_depth_const - 6 + min_depth);
+let c6: I32 = 0;
+let i6: I32 = 1;
+while (i6 < niter6 + 1) {
+  c6 = c6 + tree_check(i6, 6) + tree_check(-i6, 6);
+  i6 = i6 + 1;
+}
+
+let a: I32 = 64;
+let b: I32 = 0;
+let c: I32 = 1;
+let niterX: I32 = 2;
+let kk: I32 = 1;
+let d1: I32 = 0;
+let d2: I32 = 0;
+let d3: I32 = 0;
+while (kk < niterX + 1) {
+  kk = kk + 1;
+}
+"ok"

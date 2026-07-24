@@ -50,6 +50,52 @@ Optional profiling timestamps (monotonic clock where available):
 JELLO_PROFILE=1 ./build/bin/jellovm path/to/module.jlo
 ```
 
+### Diagnostic matrix (performance tuning)
+
+Run from a Release build (`-DCMAKE_BUILD_TYPE=Release`, computed goto ON on GCC/Clang).
+
+| Goal | Command | What to look for on stderr |
+|------|---------|----------------------------|
+| Phase timings + GC reuse | `JELLO_PROFILE=1 jellovm module.jlo` | `read_file`/`bc_read`/`vm_create`/`exec` ms; `freelist_hits` vs `freelist_misses`; top opcodes (`obj_new`, `obj_set_atom`, …) |
+| JIT compile / reject | `JELLO_JIT_DUMP=1 jellovm module.jlo` | `compiled` vs `reject` for `boot`, `pair`, `advance` |
+| Interpreter-only baseline | `jellovm --no-jit module.jlo` | Compare exec ms with JIT on |
+| Disable JIT globally | `JELLO_JIT=0` or `--no-jit` | Same as above |
+
+Recommended per-benchmark sweep (`module`, `nbodies`, `fib`, `fp`):
+
+```bash
+for b in module nbodies fib fp; do
+  echo "=== $b ==="
+  JELLO_PROFILE=1 ./build/bin/jellovm bench/out/$b.jlo 2>&1 | rg 'JELLO_PROFILE|freelist'
+  JELLO_JIT_DUMP=1 ./build/bin/jellovm bench/out/$b.jlo 2>&1 | rg 'jit|compiled|reject'
+  ./build/bin/jellovm --no-jit bench/out/$b.jlo
+done
+```
+
+Windows x64: use `release.ps1` output; expect high `freelist_hits` on `module` and JIT `compiled` for `boot` when healthy.
+
+### Local stress testing
+
+For compiler + VM correctness under load (JIT vs interpreter diff, spill/branch/GC benches, optional Linux `perf`), run the local stress pipeline documented in [STRESS_TEST.md](../../STRESS_TEST.md):
+
+```bash
+cd jello-compiler
+./bench/stress.sh quick    # ~5 min smoke
+./bench/stress.sh full     # full bench + report
+```
+
+Windows: `.\bench\stress.ps1 quick`
+
+### Safety limits (optional)
+
+By default, execution is **uncapped** (like PUC-Rio Lua): no instruction budget. Optional host limits:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `JELLO_FUEL` | off (`0`) | When set to `N > 0`, trap after `N` loop backedges + calls |
+| `JELLO_MAX_BYTES` | 64 MiB | Max `Bytes` allocation |
+| `JELLO_MAX_ARRAY` | 8 M | Max `Array` length |
+
 ## Partial JIT
 
 The VM includes a tier-1 **partial function JIT** (ARM64 first) when built with `JELLOVM_ENABLE_JIT=ON` (default). Whitelisted opcodes (i32/i64/f32/f64 arithmetic, compare, negation, const pool, branches) compile to native code; heap and other opcodes use runtime fallback to `op_dispatch`. Hot loops **OSR** after enough backedges. **Numeric self-recursion** (`CALL` or proven `CONST_FUN`+`CALLR`) compiles with a specialized self-call/return path. Cross-function `CALL`/`TAILCALL` and dense slow ops stay in the interpreter. `TRY` rejects compilation. JIT is **on by default**; use `--no-jit` or the controls below to disable.
@@ -119,6 +165,28 @@ scripts/package-vm.sh --version 0.1.0 --os darwin --arch arm64 --build-dir build
 ```
 
 `cmake --install` is the source of truth for public headers (`jello.h`, `jello/jdll.h`) and libraries — the same staging used when the [Jello SDK](https://github.com/Lazarus404/jello-compiler) zip is built.
+
+### Windows x86-64 performance (JIT)
+
+Release benchmarks on Windows expect **MinGW-w64 Clang (or GCC) + Ninja + Release**. The x64 JIT backend emits **SysV AMD64** calls to C runtime helpers; **MSVC is not a JIT perf target** (`cmake` fails fast if `JELLOVM_ENABLE_JIT=ON` with MSVC).
+
+From `jello-compiler/`:
+
+```powershell
+.\release.ps1
+$env:JELLO_JIT_DUMP = "1"
+.\build\bin\jellovm.exe bench\out\nbodies.jlo   # after benchmarks.ps1 compile step
+.\benchmarks.ps1 --filter 'fib|nbodies|module|fp'
+```
+
+| Check | Command / signal |
+|-------|------------------|
+| JIT compiles hot funcs | `JELLO_JIT_DUMP=1` — look for `compiled` vs `reject` |
+| Computed goto active | CMake status: `JELLOVM_USE_COMPUTED_GOTO: ON` (GCC/Clang only) |
+| x64 JIT backend | `JELLOVM_JIT_X64: ON` in configure log |
+| Object alloc reuse | `JELLO_PROFILE=1` — stderr `gc_freelist hits/misses` on `module` |
+
+Use a **static** `jellovm` exe (default in `release.ps1`) so LTO applies; shared `jellovm.dll` builds disable LTO.
 
 ## Layout
 

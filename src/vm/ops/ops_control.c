@@ -41,6 +41,9 @@ op_result op_ret(exec_ctx* ctx, const jello_insn* ins) {
     free(vm->const_fun_cache);
     vm->const_fun_cache = NULL;
     vm->const_fun_cache_len = 0;
+    free(vm->const_bytes_cache);
+    vm->const_bytes_cache = NULL;
+    vm->const_bytes_cache_len = 0;
     vm_enum_nullary_cache_clear(vm);
     free(vm->exc_handlers);
     vm->exc_handlers = NULL;
@@ -87,10 +90,12 @@ op_result op_ret(exec_ctx* ctx, const jello_insn* ins) {
 op_result op_jmp(exec_ctx* ctx, const jello_insn* ins) {
   call_frame* fr = ctx->fr;
   const jello_bc_function* f = ctx->f;
+  jello_vm* vm = ctx->vm;
 
   int32_t d = (int32_t)ins->imm;
   int32_t npc = (int32_t)fr->pc + d;
   if(npc < 0 || npc > (int32_t)f->ninsns) jello_vm_panic();
+  if(d < 0 && jello_vm_fuel_charge(vm) != 0) return OP_TRAP;
   fr->pc = (uint32_t)npc;
   return OP_CONTINUE;
 }

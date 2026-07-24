@@ -35,6 +35,21 @@ op_result op_bytes_len(exec_ctx* ctx, const jello_insn* ins) {
   return OP_CONTINUE;
 }
 
+op_result op_bytes_eq(exec_ctx* ctx, const jello_insn* ins) {
+  call_frame* fr = ctx->fr;
+
+  jello_bytes* a = (jello_bytes*)vm_load_ptr(&fr->rf, ins->b);
+  jello_bytes* b = (jello_bytes*)vm_load_ptr(&fr->rf, ins->c);
+  int eq = 0;
+  if(a == b) {
+    eq = 1;
+  } else if(a && b && a->length == b->length) {
+    eq = (a->length == 0) || memcmp(a->data, b->data, a->length) == 0;
+  }
+  vm_store_u32(&fr->rf, ins->a, (uint32_t)eq);
+  return OP_CONTINUE;
+}
+
 op_result op_bytes_get_u8(exec_ctx* ctx, const jello_insn* ins) {
   jello_vm* vm = ctx->vm;
   call_frame* fr = ctx->fr;

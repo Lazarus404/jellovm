@@ -6,6 +6,23 @@
 
 #include <string.h>
 
+static int array_elem_kind(
+    const jello_bc_module* m,
+    const jello_bc_function* f,
+    uint32_t arr_reg,
+    jello_type_kind* out
+) {
+  if(vm_reg_kind(m, f, arr_reg) != JELLO_T_ARRAY) return 0;
+  jello_type_id arr_tid = f->reg_types[arr_reg];
+  if(arr_tid >= m->ntypes) return 0;
+  const jello_type_entry* te = &m->types[arr_tid];
+  if(te->kind != JELLO_T_ARRAY) return 0;
+  uint32_t elem_tid = te->as.unary.elem;
+  if(elem_tid >= m->ntypes) return 0;
+  *out = m->types[elem_tid].kind;
+  return 1;
+}
+
 op_result op_array_new(exec_ctx* ctx, const jello_insn* ins) {
   jello_vm* vm = ctx->vm;
   const jello_bc_module* m = ctx->m;
@@ -69,6 +86,15 @@ op_result op_array_get(exec_ctx* ctx, const jello_insn* ins) {
     (void)jello_vm_trap(vm, JELLO_TRAP_BOUNDS, "array_get index out of bounds");
     return OP_CONTINUE;
   }
+  jello_type_kind elem_k;
+  if(vm_reg_kind(m, f, ins->a) == JELLO_T_F64 && array_elem_kind(m, f, ins->b, &elem_k) &&
+     elem_k == JELLO_T_F64) {
+    jello_value v = a->data[idx];
+    if(jello_is_box_f64(v)) {
+      vm_store_f64(&fr->rf, ins->a, jello_as_box_f64(v));
+      return OP_CONTINUE;
+    }
+  }
   vm_store_from_boxed(vm, m, f, &fr->rf, ins->a, a->data[idx]);
   return OP_CONTINUE;
 }
@@ -88,6 +114,15 @@ op_result op_array_set(exec_ctx* ctx, const jello_insn* ins) {
   if(idx >= a->length) {
     (void)jello_vm_trap(vm, JELLO_TRAP_BOUNDS, "array_set index out of bounds");
     return OP_CONTINUE;
+  }
+  jello_type_kind elem_k;
+  if(vm_reg_kind(m, f, ins->a) == JELLO_T_F64 && array_elem_kind(m, f, ins->b, &elem_k) &&
+     elem_k == JELLO_T_F64) {
+    jello_value* slot = &a->data[idx];
+    if(jello_is_box_f64(*slot)) {
+      ((jello_box_f64*)jello_as_ptr(*slot))->value = vm_load_f64(&fr->rf, ins->a);
+      return OP_CONTINUE;
+    }
   }
   if(vm_store_num_inplace(vm, m, f, &fr->rf, ins->a, &a->data[idx]))
     return OP_CONTINUE;

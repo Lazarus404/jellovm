@@ -15,6 +15,14 @@ _Static_assert(offsetof(jello_object, len) == 20u, "jello_object.len");
 _Static_assert(offsetof(jello_object, keys) == 24u, "jello_object.keys");
 _Static_assert(offsetof(jello_object, vals) == 32u, "jello_object.vals");
 _Static_assert(offsetof(jello_object, states) == 40u, "jello_object.states");
+_Static_assert(offsetof(jello_object, ic_atom) == 48u, "jello_object.ic_atom");
+_Static_assert(offsetof(jello_object, ic_slot) == 52u, "jello_object.ic_slot");
+_Static_assert(offsetof(jello_object, ic_cap) == 56u, "jello_object.ic_cap");
+_Static_assert(offsetof(jello_array, length) == 8u, "jello_array.length");
+_Static_assert(offsetof(jello_array, data) == 16u, "jello_array.data");
+
+#define JIT_ARRAY_OFF_LEN 8u
+#define JIT_ARRAY_OFF_DATA 16u
 
 #define JIT_REG_CTX 19
 #define JIT_REG_BASE 20
@@ -34,6 +42,9 @@ _Static_assert(offsetof(jello_object, states) == 40u, "jello_object.states");
 #define JIT_OBJ_OFF_KEYS 24u
 #define JIT_OBJ_OFF_VALS 32u
 #define JIT_OBJ_OFF_STATES 40u
+#define JIT_OBJ_OFF_IC_ATOM 48u
+#define JIT_OBJ_OFF_IC_SLOT 52u
+#define JIT_OBJ_OFF_IC_CAP 56u
 
 /* Scratch for object probe (caller-saved). */
 #define JIT_X_KEYS 10
@@ -174,6 +185,8 @@ static int emit_bin_i64(jello_jit_emit_buf* buf, jello_jit_ir_bin bin) {
       return jello_jit_emit_u32(buf, a64_lslv_x(JIT_REG_T0, JIT_REG_T0, JIT_REG_T1));
     case JIR_BIN_SHR:
       return jello_jit_emit_u32(buf, a64_lsrv_x(JIT_REG_T0, JIT_REG_T0, JIT_REG_T1));
+    case JIR_BIN_XOR:
+      return jello_jit_emit_u32(buf, a64_eor_x_rr(JIT_REG_T0, JIT_REG_T0, JIT_REG_T1));
     default:
       return jello_jit_emit_u32(buf, a64_add_x_rr(JIT_REG_T0, JIT_REG_T0, JIT_REG_T1));
   }
@@ -240,6 +253,19 @@ static size_t ir_off_for_bc(const jello_jit_ir_func* ir, const size_t* ir_off, u
     if(ir->insns[i].bc_pc == bc_pc) return ir_off[i];
   }
   return 0;
+}
+
+static uint32_t switch_kind_target(uint32_t switch_pc, uint32_t ncases, int32_t delta) {
+  return switch_pc + 1u + ncases + (uint32_t)delta;
+}
+
+static void mark_bc_target(uint8_t* is_target, const jello_jit_ir_func* ir, uint32_t bc_tgt) {
+  for(uint32_t k = 0; k < ir->ninsns; k++) {
+    if(ir->insns[k].bc_pc != bc_tgt) continue;
+    if(ir->insns[k].op == JIR_FUEL_CHECK || ir->insns[k].op == JIR_SWITCH_CASE) continue;
+    is_target[k] = 1u;
+    break;
+  }
 }
 
 static int patch_branch_sites(
@@ -406,6 +432,150 @@ static uint32_t jit_obj_hash_u32(uint32_t x) {
   return x;
 }
 
+static jello_type_kind vm_array_elem_kind(
+    const jello_bc_module* m,
+    const jello_bc_function* f,
+    uint32_t arr_reg
+) {
+  if(vm_reg_kind(m, f, arr_reg) != JELLO_T_ARRAY) return (jello_type_kind)0;
+  jello_type_id arr_tid = f->reg_types[arr_reg];
+  if(arr_tid >= m->ntypes) return (jello_type_kind)0;
+  const jello_type_entry* te = &m->types[arr_tid];
+  if(te->kind != JELLO_T_ARRAY) return (jello_type_kind)0;
+  uint32_t elem_tid = te->as.unary.elem;
+  if(elem_tid >= m->ntypes) return (jello_type_kind)0;
+  return m->types[elem_tid].kind;
+}
+
+static int emit_array_get_f64_helper(
+    jello_jit_emit_buf* buf,
+    uint32_t dst,
+    uint32_t arr_reg,
+    uint32_t idx_reg
+) {
+  if(jello_jit_emit_u32(buf, 0xAA1303E0u) != 0) return -1;
+  if(emit_mov_w_imm(buf, 1, dst) != 0) return -1;
+  if(emit_mov_w_imm(buf, 2, arr_reg) != 0) return -1;
+  if(emit_mov_w_imm(buf, 3, idx_reg) != 0) return -1;
+  return emit_rt_call_continue_keep_base(buf, (void*)jello_jit_runtime_array_get);
+}
+
+static int emit_array_get_f64(
+    jello_jit_emit_buf* buf,
+    const frame_layout* layout,
+    const jello_bc_module* m,
+    const jello_bc_function* f,
+    uint32_t dst,
+    uint32_t arr_reg,
+    uint32_t idx_reg
+) {
+  if(vm_reg_kind(m, f, dst) != JELLO_T_F64 || vm_array_elem_kind(m, f, arr_reg) != JELLO_T_F64)
+    return emit_array_get_f64_helper(buf, dst, arr_reg, idx_reg);
+
+  size_t j_slow[6];
+  int n_slow = 0;
+
+  if(emit_ldr_x_slot(buf, JIT_X_OBJ, JIT_REG_BASE, slot_off(layout, arr_reg)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_cbz_x(JIT_X_OBJ, 0)) != 0) return -1;
+
+  if(emit_ldr_w_slot(buf, JIT_X_IDX, JIT_REG_BASE, slot_off(layout, idx_reg)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_w_uimm(JIT_X_TMP, JIT_X_OBJ, JIT_ARRAY_OFF_LEN)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_subs_w_rr(31, JIT_X_IDX, JIT_X_TMP)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_b_hs(0)) != 0) return -1;
+
+  if(jello_jit_emit_u32(buf, a64_ldr_x_uimm(JIT_X_TMP, JIT_X_OBJ, JIT_ARRAY_OFF_DATA)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_lsl_w_imm(JIT_X_IDX, JIT_X_IDX, 3)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_add_x_rr(JIT_X_TMP, JIT_X_TMP, JIT_X_IDX)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_x_uimm(JIT_X_BOX, JIT_X_TMP, 0)) != 0) return -1;
+
+  if(emit_mov_w_imm(buf, 0, 7) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_and_w_rr(JIT_X_TMP, JIT_X_BOX, 0)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_cmp_w_imm(JIT_X_TMP, (uint16_t)JELLO_TAG_NULL)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_b_eq(0)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_cbnz_w(JIT_X_TMP, 0)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_cbz_x(JIT_X_BOX, 0)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_w_uimm(0, JIT_X_BOX, 0)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_cmp_w_imm(0, (uint16_t)JELLO_OBJ_BOX_F64)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_b_ne(0)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_d_uimm(JIT_FP_T0, JIT_X_BOX, 8)) != 0) return -1;
+  if(emit_str_d_slot(buf, JIT_FP_T0, JIT_REG_BASE, slot_off(layout, dst)) != 0) return -1;
+
+  size_t slow_at = buf->size;
+  for(int i = 0; i < n_slow; i++) {
+    if(patch_cb(buf, j_slow[i], slow_at) != 0) return -1;
+  }
+  return emit_array_get_f64_helper(buf, dst, arr_reg, idx_reg);
+}
+
+static int emit_array_set_f64_helper(
+    jello_jit_emit_buf* buf,
+    uint32_t val_reg,
+    uint32_t arr_reg,
+    uint32_t idx_reg
+) {
+  if(jello_jit_emit_u32(buf, 0xAA1303E0u) != 0) return -1;
+  if(emit_mov_w_imm(buf, 1, val_reg) != 0) return -1;
+  if(emit_mov_w_imm(buf, 2, arr_reg) != 0) return -1;
+  if(emit_mov_w_imm(buf, 3, idx_reg) != 0) return -1;
+  return emit_rt_call_continue_keep_base(buf, (void*)jello_jit_runtime_array_set);
+}
+
+static int emit_array_set_f64(
+    jello_jit_emit_buf* buf,
+    const frame_layout* layout,
+    const jello_bc_module* m,
+    const jello_bc_function* f,
+    uint32_t val_reg,
+    uint32_t arr_reg,
+    uint32_t idx_reg
+) {
+  if(vm_reg_kind(m, f, val_reg) != JELLO_T_F64 || vm_array_elem_kind(m, f, arr_reg) != JELLO_T_F64)
+    return emit_array_set_f64_helper(buf, val_reg, arr_reg, idx_reg);
+
+  size_t j_slow[6];
+  int n_slow = 0;
+
+  if(emit_ldr_x_slot(buf, JIT_X_OBJ, JIT_REG_BASE, slot_off(layout, arr_reg)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_cbz_x(JIT_X_OBJ, 0)) != 0) return -1;
+
+  if(emit_ldr_w_slot(buf, JIT_X_IDX, JIT_REG_BASE, slot_off(layout, idx_reg)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_w_uimm(JIT_X_TMP, JIT_X_OBJ, JIT_ARRAY_OFF_LEN)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_subs_w_rr(31, JIT_X_IDX, JIT_X_TMP)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_b_hs(0)) != 0) return -1;
+
+  if(jello_jit_emit_u32(buf, a64_ldr_x_uimm(JIT_X_TMP, JIT_X_OBJ, JIT_ARRAY_OFF_DATA)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_lsl_w_imm(JIT_X_IDX, JIT_X_IDX, 3)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_add_x_rr(JIT_X_TMP, JIT_X_TMP, JIT_X_IDX)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_x_uimm(JIT_X_BOX, JIT_X_TMP, 0)) != 0) return -1;
+
+  if(emit_mov_w_imm(buf, 0, 7) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_and_w_rr(1, JIT_X_BOX, 0)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_cbnz_w(1, 0)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_cbz_x(JIT_X_BOX, 0)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_w_uimm(0, JIT_X_BOX, 0)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_cmp_w_imm(0, (uint16_t)JELLO_OBJ_BOX_F64)) != 0) return -1;
+  j_slow[n_slow++] = buf->size;
+  if(jello_jit_emit_u32(buf, a64_b_ne(0)) != 0) return -1;
+  if(emit_ldr_d_slot(buf, JIT_FP_T0, JIT_REG_BASE, slot_off(layout, val_reg)) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_str_d_uimm(JIT_FP_T0, JIT_X_BOX, 8)) != 0) return -1;
+
+  size_t slow_at = buf->size;
+  for(int i = 0; i < n_slow; i++) {
+    if(patch_cb(buf, j_slow[i], slow_at) != 0) return -1;
+  }
+  return emit_array_set_f64_helper(buf, val_reg, arr_reg, idx_reg);
+}
+
 static int emit_obj_get_atom_helper(
     jello_jit_emit_buf* buf,
     uint32_t dst,
@@ -430,6 +600,21 @@ static int emit_obj_set_atom_helper(
   if(emit_mov_w_imm(buf, 2, obj_reg) != 0) return -1;
   if(emit_mov_w_imm(buf, 3, atom_id) != 0) return -1;
   return emit_rt_call_continue_keep_base(buf, (void*)jello_jit_runtime_obj_set_atom);
+}
+
+static int emit_obj_new(
+    jello_jit_emit_buf* buf,
+    const frame_layout* layout,
+    uint32_t dst
+) {
+  if(jello_jit_emit_u32(buf, a64_ldr_x_uimm(0, JIT_REG_CTX, (uint32_t)offsetof(exec_ctx, vm))) != 0) return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_x_uimm(JIT_REG_T0, JIT_REG_CTX, (uint32_t)offsetof(exec_ctx, f))) != 0)
+    return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_x_uimm(JIT_REG_T0, JIT_REG_T0, (uint32_t)offsetof(jello_bc_function, reg_types))) != 0)
+    return -1;
+  if(jello_jit_emit_u32(buf, a64_ldr_w_uimm(1, JIT_REG_T0, dst * 4u)) != 0) return -1;
+  if(emit_call_fn(buf, (void*)jello_jit_object_new) != 0) return -1;
+  return emit_str_x_slot(buf, 0, JIT_REG_BASE, slot_off(layout, dst));
 }
 
 static int emit_obj_probe_setup(
@@ -829,18 +1014,23 @@ static int emit_ir(
   if(!is_target && ir->ninsns) return -1;
   for(uint32_t j = 0; j < ir->ninsns; j++) {
     const jello_jit_ir_insn* t = &ir->insns[j];
-    if(t->op != JIR_JMP && t->op != JIR_JMP_IF) continue;
-    uint32_t bc_tgt = (uint32_t)t->imm;
-    for(uint32_t k = 0; k < ir->ninsns; k++) {
-      if(ir->insns[k].bc_pc == bc_tgt) {
-        is_target[k] = 1u;
-        break;
+    if(t->op == JIR_JMP || t->op == JIR_JMP_IF) {
+      mark_bc_target(is_target, ir, (uint32_t)t->imm);
+    } else if(t->op == JIR_SWITCH) {
+      uint32_t spc = t->bc_pc;
+      uint32_t nc = (uint32_t)t->b;
+      mark_bc_target(is_target, ir, switch_kind_target(spc, nc, t->imm));
+      for(uint32_t c = 0; c < nc; c++) {
+        const jello_jit_ir_insn* cs = &ir->insns[j + 1u + c];
+        if(cs->op != JIR_SWITCH_CASE) continue;
+        mark_bc_target(is_target, ir, switch_kind_target(spc, nc, cs->imm));
       }
     }
   }
   uint16_t i32c_reg = JIT_I32C_NONE;
   for(uint32_t i = 0; i < ir->ninsns; i++) {
     const jello_jit_ir_insn* in = &ir->insns[i];
+    if(in->op == JIR_SWITCH_CASE) continue;
     ir_off[i] = buf->size;
     if(is_target[i]) i32c_reg = JIT_I32C_NONE;
 
@@ -926,6 +1116,10 @@ static int emit_ir(
               break;
             case JIR_BIN_SHR:
               if(jello_jit_emit_u32(buf, a64_lsrv_w(JIT_REG_T0, JIT_REG_T0, JIT_REG_T1)) != 0)
+                goto fail_ir;
+              break;
+            case JIR_BIN_XOR:
+              if(jello_jit_emit_u32(buf, a64_eor_w_rr(JIT_REG_T0, JIT_REG_T0, JIT_REG_T1)) != 0)
                 goto fail_ir;
               break;
             default:
@@ -1065,6 +1259,34 @@ static int emit_ir(
         (*npatch_sites)++;
         break;
       }
+      case JIR_SWITCH: {
+        uint32_t switch_pc = in->bc_pc;
+        uint32_t ncases = (uint32_t)in->b;
+        if(i + ncases >= ir->ninsns) goto fail_ir;
+        if(emit_ldr_i32_cached(buf, layout, &i32c_reg, in->a, JIT_REG_T0) != 0) goto fail_ir;
+        for(uint32_t c = 0; c < ncases; c++) {
+          const jello_jit_ir_insn* cs = &ir->insns[i + 1u + c];
+          if(cs->op != JIR_SWITCH_CASE) goto fail_ir;
+          if(emit_mov_w_imm(buf, JIT_REG_T1, (uint32_t)cs->a) != 0) goto fail_ir;
+          if(jello_jit_emit_u32(buf, a64_subs_w_rr(31, JIT_REG_T0, JIT_REG_T1)) != 0) goto fail_ir;
+          if(*npatch_sites >= patch_cap) goto fail_ir;
+          size_t at = buf->size;
+          if(jello_jit_emit_u32(buf, a64_b_eq(0)) != 0) goto fail_ir;
+          patch_sites[*npatch_sites].at = at;
+          patch_sites[*npatch_sites].bc_tgt = switch_kind_target(switch_pc, ncases, cs->imm);
+          patch_sites[*npatch_sites].kind = 1u; /* b.eq — patch_cb, not patch_branch */
+          (*npatch_sites)++;
+        }
+        if(*npatch_sites >= patch_cap) goto fail_ir;
+        size_t def_at = buf->size;
+        if(jello_jit_emit_u32(buf, a64_b(0)) != 0) goto fail_ir;
+        patch_sites[*npatch_sites].at = def_at;
+        patch_sites[*npatch_sites].bc_tgt = switch_kind_target(switch_pc, ncases, in->imm);
+        patch_sites[*npatch_sites].kind = 0u;
+        (*npatch_sites)++;
+        i += ncases;
+        break;
+      }
       case JIR_FUEL_CHECK:
         if(emit_inline_fuel_check(buf) != 0) goto fail_ir;
         i32c_reg = JIT_I32C_NONE;
@@ -1074,6 +1296,14 @@ static int emit_ir(
         if(emit_mov_w_imm(buf, 1, in->a) != 0) goto fail_ir;
         if(emit_mov_w_imm(buf, 2, in->b) != 0) goto fail_ir;
         if(emit_rt_call_continue_keep_base(buf, (void*)jello_jit_runtime_bytes_len) != 0) goto fail_ir;
+        break;
+      }
+      case JIR_BYTES_EQ: {
+        if(jello_jit_emit_u32(buf, 0xAA1303E0u) != 0) goto fail_ir; /* x0 = ctx */
+        if(emit_mov_w_imm(buf, 1, in->a) != 0) goto fail_ir;
+        if(emit_mov_w_imm(buf, 2, in->b) != 0) goto fail_ir;
+        if(emit_mov_w_imm(buf, 3, in->c) != 0) goto fail_ir;
+        if(emit_rt_call_continue_keep_base(buf, (void*)jello_jit_runtime_bytes_eq) != 0) goto fail_ir;
         break;
       }
       case JIR_BYTES_GET_U8: {
@@ -1100,19 +1330,11 @@ static int emit_ir(
         break;
       }
       case JIR_ARRAY_GET: {
-        if(jello_jit_emit_u32(buf, 0xAA1303E0u) != 0) goto fail_ir;
-        if(emit_mov_w_imm(buf, 1, in->a) != 0) goto fail_ir;
-        if(emit_mov_w_imm(buf, 2, in->b) != 0) goto fail_ir;
-        if(emit_mov_w_imm(buf, 3, in->c) != 0) goto fail_ir;
-        if(emit_rt_call_continue_keep_base(buf, (void*)jello_jit_runtime_array_get) != 0) goto fail_ir;
+        if(emit_array_get_f64(buf, layout, m, f, in->a, in->b, in->c) != 0) goto fail_ir;
         break;
       }
       case JIR_ARRAY_SET: {
-        if(jello_jit_emit_u32(buf, 0xAA1303E0u) != 0) goto fail_ir;
-        if(emit_mov_w_imm(buf, 1, in->a) != 0) goto fail_ir;
-        if(emit_mov_w_imm(buf, 2, in->b) != 0) goto fail_ir;
-        if(emit_mov_w_imm(buf, 3, in->c) != 0) goto fail_ir;
-        if(emit_rt_call_continue_keep_base(buf, (void*)jello_jit_runtime_array_set) != 0) goto fail_ir;
+        if(emit_array_set_f64(buf, layout, m, f, in->a, in->b, in->c) != 0) goto fail_ir;
         break;
       }
       case JIR_ARRAY_NEW: {
@@ -1177,9 +1399,7 @@ static int emit_ir(
         break;
       }
       case JIR_OBJ_NEW: {
-        if(jello_jit_emit_u32(buf, 0xAA1303E0u) != 0) goto fail_ir;
-        if(emit_mov_w_imm(buf, 1, in->a) != 0) goto fail_ir;
-        if(emit_rt_call_continue_keep_base(buf, (void*)jello_jit_runtime_obj_new) != 0) goto fail_ir;
+        if(emit_obj_new(buf, layout, in->a) != 0) goto fail_ir;
         break;
       }
       case JIR_SLOW: {
@@ -1269,7 +1489,7 @@ static int emit_ir(
     }
     /* Runtime helpers / calls may mutate slots or rebase rf.mem. */
     if(in->op == JIR_SLOW || in->op == JIR_CALL_SELF || in->op == JIR_CALL_DIRECT ||
-       in->op == JIR_RET || in->op == JIR_BYTES_LEN || in->op == JIR_BYTES_GET_U8 ||
+       in->op == JIR_RET || in->op == JIR_BYTES_LEN || in->op == JIR_BYTES_EQ || in->op == JIR_BYTES_GET_U8 ||
        in->op == JIR_BYTES_SET_U8 || in->op == JIR_BYTES_NEW || in->op == JIR_ARRAY_LEN ||
        in->op == JIR_ARRAY_GET || in->op == JIR_ARRAY_SET || in->op == JIR_ARRAY_NEW ||
        in->op == JIR_OBJ_GET_ATOM || in->op == JIR_OBJ_SET_ATOM || in->op == JIR_OBJ_NEW ||

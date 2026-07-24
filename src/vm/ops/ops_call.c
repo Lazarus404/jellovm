@@ -86,6 +86,7 @@ op_result op_call(exec_ctx* ctx, const jello_insn* ins) {
   const jello_bc_function* f = ctx->f;
   call_frame* fr = ctx->fr;
 
+  if(jello_vm_fuel_charge(vm) != 0) return OP_TRAP;
   uint32_t fi = ins->imm;
   if(jello_is_native_builtin(fi)) {
     jello_invoke_native_builtin(ctx, ins, fi, ins->b);
@@ -107,6 +108,8 @@ op_result op_callr(exec_ctx* ctx, const jello_insn* ins) {
   const jello_bc_module* m = ctx->m;
   const jello_bc_function* f = ctx->f;
   call_frame* fr = ctx->fr;
+
+  if(jello_vm_fuel_charge(vm) != 0) return OP_TRAP;
 
   jello_value v = vm_load_val(&fr->rf, ins->b);
   if(getenv("JELLO_TRACE_CLOSURE")) {

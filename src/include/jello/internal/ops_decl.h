@@ -141,6 +141,7 @@ op_result op_array_resize(exec_ctx* ctx, const jello_insn* ins);
 
 op_result op_bytes_new(exec_ctx* ctx, const jello_insn* ins);
 op_result op_bytes_len(exec_ctx* ctx, const jello_insn* ins);
+op_result op_bytes_eq(exec_ctx* ctx, const jello_insn* ins);
 op_result op_bytes_get_u8(exec_ctx* ctx, const jello_insn* ins);
 op_result op_bytes_set_u8(exec_ctx* ctx, const jello_insn* ins);
 op_result op_bytes_concat2(exec_ctx* ctx, const jello_insn* ins);

@@ -45,6 +45,7 @@ int jello_vm_jit_enabled(const jello_vm* vm) {
 void jello_vm_destroy(jello_vm* vm) {
   if (!vm) return;
   jello_jit_shutdown(vm);
+  jello_vm_profile_free(vm);
   jello_gc_shutdown(vm);
   vm_frame_cache_shutdown(vm);
   free(vm->spill);
@@ -60,6 +61,9 @@ void jello_vm_destroy(jello_vm* vm) {
   free(vm->const_fun_cache);
   vm->const_fun_cache = NULL;
   vm->const_fun_cache_len = 0;
+  free(vm->const_bytes_cache);
+  vm->const_bytes_cache = NULL;
+  vm->const_bytes_cache_len = 0;
   vm_enum_nullary_cache_clear(vm);
 
   free(vm->exc_handlers);
@@ -97,6 +101,16 @@ void jello_vm_set_fuel(jello_vm* vm, uint64_t fuel) {
   if(!vm) return;
   vm->fuel_limit = fuel;
   vm->fuel_remaining = fuel;
+}
+
+int jello_vm_fuel_charge(jello_vm* vm) {
+  if(!vm || !vm->fuel_limit) return 0;
+  if(vm->fuel_remaining == 0) {
+    (void)jello_vm_trap(vm, JELLO_TRAP_FUEL, "instruction limit exceeded");
+    return -1;
+  }
+  vm->fuel_remaining--;
+  return 0;
 }
 
 void jello_vm_set_max_bytes_len(jello_vm* vm, uint32_t max_len) {

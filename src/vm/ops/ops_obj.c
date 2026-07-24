@@ -51,7 +51,8 @@ static void obj_update_proto_cache(jello_object* o, jello_value v, const jello_b
 }
 
 int vm_obj_get_atom_typed(jello_vm* vm, const jello_bc_module* m, const jello_bc_function* f,
-                          reg_frame* rf, uint32_t dst, uint32_t obj_reg, uint32_t atom_id) {
+                          reg_frame* rf, uint32_t dst, uint32_t obj_reg, uint32_t atom_id,
+                          uint32_t slot_hint) {
   jello_object* o = (jello_object*)vm_load_ptr(rf, obj_reg);
   if(!o) {
     (void)jello_vm_trap(vm, JELLO_TRAP_NULL_DEREF, "obj_get_atom on null");
@@ -59,7 +60,37 @@ int vm_obj_get_atom_typed(jello_vm* vm, const jello_bc_module* m, const jello_bc
   }
   /* No chain walk when proto disabled, reading __proto__, or object has no proto. */
   if(!m->proto_enabled || atom_id == JELLO_ATOM___PROTO__ || !o->proto) {
-    jello_value v = jello_object_get(o, atom_id);
+    jello_value v = jello_object_get_slot(o, slot_hint, atom_id);
+    switch(vm_reg_kind(m, f, dst)) {
+      case JELLO_T_I8:
+      case JELLO_T_I16:
+      case JELLO_T_I32:
+        if(jello_is_i32(v)) {
+          vm_store_u32(rf, dst, (uint32_t)jello_as_i32(v));
+          return 1;
+        }
+        break;
+      case JELLO_T_F64:
+        if(jello_is_box_f64(v)) {
+          vm_store_f64(rf, dst, jello_as_box_f64(v));
+          return 1;
+        }
+        break;
+      case JELLO_T_F32:
+        if(jello_is_box_f32(v)) {
+          vm_store_f32(rf, dst, jello_as_box_f32(v));
+          return 1;
+        }
+        break;
+      case JELLO_T_I64:
+        if(jello_is_box_i64(v)) {
+          vm_store_i64(rf, dst, jello_as_box_i64(v));
+          return 1;
+        }
+        break;
+      default:
+        break;
+    }
     vm_store_from_boxed(vm, m, f, rf, dst, v);
     return 1;
   }
@@ -84,14 +115,15 @@ int vm_obj_get_atom_typed(jello_vm* vm, const jello_bc_module* m, const jello_bc
 }
 
 int vm_obj_set_atom_typed(jello_vm* vm, const jello_bc_module* m, const jello_bc_function* f,
-                          reg_frame* rf, uint32_t val_reg, uint32_t obj_reg, uint32_t atom_id) {
+                          reg_frame* rf, uint32_t val_reg, uint32_t obj_reg, uint32_t atom_id,
+                          uint32_t slot_hint) {
   jello_object* o = (jello_object*)vm_load_ptr(rf, obj_reg);
   if(!o) {
     (void)jello_vm_trap(vm, JELLO_TRAP_NULL_DEREF, "obj_set_atom on null");
     return 0;
   }
   int existed = 0;
-  jello_value* slot = jello_object_upsert(o, atom_id, &existed);
+  jello_value* slot = jello_object_set_slot(o, slot_hint, atom_id, &existed);
   if(!slot) return 0;
   if(existed && atom_id != JELLO_ATOM___PROTO__ &&
      vm_store_num_inplace(vm, m, f, rf, val_reg, slot))
@@ -104,12 +136,12 @@ int vm_obj_set_atom_typed(jello_vm* vm, const jello_bc_module* m, const jello_bc
 }
 
 op_result op_obj_get_atom(exec_ctx* ctx, const jello_insn* ins) {
-  (void)vm_obj_get_atom_typed(ctx->vm, ctx->m, ctx->f, &ctx->fr->rf, ins->a, ins->b, ins->imm);
+  (void)vm_obj_get_atom_typed(ctx->vm, ctx->m, ctx->f, &ctx->fr->rf, ins->a, ins->b, ins->imm, ins->c);
   return OP_CONTINUE;
 }
 
 op_result op_obj_set_atom(exec_ctx* ctx, const jello_insn* ins) {
-  (void)vm_obj_set_atom_typed(ctx->vm, ctx->m, ctx->f, &ctx->fr->rf, ins->a, ins->b, ins->imm);
+  (void)vm_obj_set_atom_typed(ctx->vm, ctx->m, ctx->f, &ctx->fr->rf, ins->a, ins->b, ins->imm, ins->c);
   return OP_CONTINUE;
 }
 

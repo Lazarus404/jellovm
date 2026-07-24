@@ -302,6 +302,12 @@ void jello_gc_collect(struct jello_vm* vm) {
       mark_ptr(&ms, fs[i]);
     }
   }
+  if(vm->const_bytes_cache && vm->const_bytes_cache_len) {
+    void** bs = (void**)vm->const_bytes_cache;
+    for(uint32_t i = 0; i < vm->const_bytes_cache_len; i++) {
+      mark_ptr(&ms, bs[i]);
+    }
+  }
   if(vm->enum_nullary_by_type && vm->enum_nullary_ntypes) {
     for(uint32_t ti = 0; ti < vm->enum_nullary_ntypes; ti++) {
       enum_nullary_type_cache* t = vm->enum_nullary_by_type[ti];
@@ -367,18 +373,21 @@ void jello_gc_collect(struct jello_vm* vm) {
 }
 
 void* jello_gc_alloc(struct jello_vm* vm, size_t size) {
+  return jello_gc_alloc_recycled(vm, size, NULL);
+}
+
+void* jello_gc_alloc_recycled(struct jello_vm* vm, size_t size, int* recycled) {
   if(!vm) gc_panic();
+  if(recycled) *recycled = 0;
 
   size_t total = sizeof(jello_gc_hdr) + size;
-  /* Prefer freelist. Freelist hits still charge live: they re-enter gc_objects
-   * and must eventually be swept. Nursery floor (see collect) is sized so a
-   * full recycle pool can drain before the next mark-sweep. */
   if(vm->gc_next_collect && vm->gc_bytes_live >= vm->gc_next_collect) {
     jello_gc_collect(vm);
   }
   jello_gc_hdr* h = gc_box_free_pop(vm, total);
   if(h) {
     vm->gc_freelist_hits++;
+    if(recycled) *recycled = 1;
   } else {
     vm->gc_freelist_misses++;
     h = (jello_gc_hdr*)malloc(total);

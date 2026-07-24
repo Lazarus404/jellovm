@@ -93,6 +93,7 @@ op_result op_dispatch(exec_ctx* ctx, const jello_insn* ins) {
     [JOP_BYTES_WRITE_I32_BE] = &&L_BYTES_WRITE_I32_BE,
     [JOP_BYTES_WRITE_F32_LE] = &&L_BYTES_WRITE_F32_LE,
     [JOP_BYTES_WRITE_F32_BE] = &&L_BYTES_WRITE_F32_BE,
+    [JOP_BYTES_EQ] = &&L_BYTES_EQ,
     [JOP_OBJ_NEW] = &&L_OBJ_NEW, [JOP_OBJ_HAS_ATOM] = &&L_OBJ_HAS_ATOM, [JOP_OBJ_GET_ATOM] = &&L_OBJ_GET_ATOM,
     [JOP_OBJ_SET_ATOM] = &&L_OBJ_SET_ATOM,     [JOP_OBJ_GET] = &&L_OBJ_GET, [JOP_OBJ_SET] = &&L_OBJ_SET,
     [JOP_OBJ_HAS] = &&L_OBJ_HAS, [JOP_OBJ_REMOVE] = &&L_OBJ_REMOVE, [JOP_OBJ_CLEAR] = &&L_OBJ_CLEAR,
@@ -130,6 +131,9 @@ L_RET: {
     free(vm->const_fun_cache);
     vm->const_fun_cache = NULL;
     vm->const_fun_cache_len = 0;
+    free(vm->const_bytes_cache);
+    vm->const_bytes_cache = NULL;
+    vm->const_bytes_cache_len = 0;
     vm_enum_nullary_cache_clear(vm);
     free(vm->exc_handlers);
     vm->exc_handlers = NULL;
@@ -391,6 +395,7 @@ L_BYTES_WRITE_I32_LE: return op_bytes_write_i32_le(ctx, ins);
 L_BYTES_WRITE_I32_BE: return op_bytes_write_i32_be(ctx, ins);
 L_BYTES_WRITE_F32_LE: return op_bytes_write_f32_le(ctx, ins);
 L_BYTES_WRITE_F32_BE: return op_bytes_write_f32_be(ctx, ins);
+L_BYTES_EQ: return op_bytes_eq(ctx, ins);
 L_OBJ_NEW: return op_obj_new(ctx, ins);
 L_OBJ_HAS_ATOM: return op_obj_has_atom(ctx, ins);
 L_OBJ_GET_ATOM: return op_obj_get_atom(ctx, ins);
@@ -554,6 +559,7 @@ L_PANIC: return op_panic(ctx, ins);
     case JOP_BYTES_WRITE_I32_BE: return op_bytes_write_i32_be(ctx, ins);
     case JOP_BYTES_WRITE_F32_LE: return op_bytes_write_f32_le(ctx, ins);
     case JOP_BYTES_WRITE_F32_BE: return op_bytes_write_f32_be(ctx, ins);
+    case JOP_BYTES_EQ: return op_bytes_eq(ctx, ins);
     case JOP_OBJ_NEW: return op_obj_new(ctx, ins);
     case JOP_OBJ_HAS_ATOM: return op_obj_has_atom(ctx, ins);
     case JOP_OBJ_GET_ATOM: return op_obj_get_atom(ctx, ins);

@@ -137,12 +137,13 @@ static int run_module(
 		return 2;
 	}
 	if(no_jit) jello_vm_set_jit_enabled(vm, 0);
+	if(profile) jello_vm_set_profile(vm, 1);
 	jello_vm_set_entry_path(vm, jello_discovery_entry_path(entry_path));
 	if(prog_argc > 0) {
 		jello_vm_set_program_args(vm, prog_argc, prog_argv);
 	}
 
-	jello_vm_set_fuel(vm, parse_u64_env("JELLO_FUEL", 200000000ull));
+	jello_vm_set_fuel(vm, parse_u64_env("JELLO_FUEL", 0));
 	{
 		uint64_t v = parse_u64_env("JELLO_MAX_BYTES", (uint64_t)(64u * 1024u * 1024u));
 		if(v > 0xffffffffull) v = 0xffffffffull;
@@ -168,6 +169,7 @@ static int run_module(
 		        (unsigned long long)vm->gc_freelist_hits,
 		        (unsigned long long)vm->gc_freelist_misses,
 		        vm->gc_bytes_live);
+		jello_vm_profile_dump(vm, stderr);
 	}
 
 	if(st == JELLO_EXEC_TRAP) {

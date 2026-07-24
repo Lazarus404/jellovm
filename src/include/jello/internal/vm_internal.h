@@ -7,6 +7,7 @@
 #define JELLO_INTERNAL_VM_INTERNAL_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 #include <jello.h>
 
@@ -55,9 +56,10 @@ struct jello_vm {
   void* gc_objects;
   size_t gc_bytes_live;
   size_t gc_next_collect;
-  /* Recycled numeric boxes / small inline objects. Linked via gc_hdr->next; not on gc_objects. */
-  void* gc_box_free;
+  /* Recycled numeric boxes / small inline objects (bucket freelist below). */
   uint32_t gc_box_free_len;
+
+  void* gc_box_free;
 
   jello_value* gc_roots;
   uint32_t gc_roots_len;
@@ -75,6 +77,9 @@ struct jello_vm {
 
   void* const_fun_cache;
   uint32_t const_fun_cache_len;
+
+  void* const_bytes_cache;
+  uint32_t const_bytes_cache_len;
 
   /* Flyweight cache for nullary enum values (cleared with const_fun_cache). */
   enum_nullary_type_cache** enum_nullary_by_type;
@@ -124,6 +129,20 @@ struct jello_vm {
   /* Partial JIT (optional build). */
   void* jit_state;
   uint8_t jit_enabled;
+
+  /* Opcode profiling (JELLO_PROFILE=1). */
+  uint64_t* op_counts;
+  uint8_t profile_enabled;
+#if defined(JELLOVM_PROFILE)
+  uint64_t profile_push_frame;
+  uint64_t profile_replace_frame;
+  uint64_t profile_push_fast_arg;
+  uint64_t profile_replace_fast;
+  uint64_t profile_replace_slow;
+  uint64_t profile_frame_stack_alloc;
+  uint64_t profile_frame_pool_alloc;
+#endif
+
 };
 
 typedef struct reg_frame {
@@ -197,6 +216,8 @@ typedef op_result (*op_handler_fn)(exec_ctx* ctx, const jello_insn* ins);
 /* --- trap/panic (used by interp + ops) --- */
 jello_exec_status jello_vm_trap(jello_vm* vm, jello_trap_code code, const char* msg);
 void jello_vm_panic(void);
+/* Tier-1 fuel: charge one unit (returns -1 and sets trap when exhausted). */
+int jello_vm_fuel_charge(jello_vm* vm);
 
 int vm_arg_types_compatible(const jello_bc_module* m, uint32_t src_tid, uint32_t dst_tid);
 
@@ -258,9 +279,11 @@ jello_value vm_clone_numbox(jello_vm* vm, jello_value v);
 /* Typed object atom get/set shared by interpreter hot path and JIT stubs.
  * Return 0 if a trap was raised (null / deep proto); 1 on success. */
 int vm_obj_get_atom_typed(jello_vm* vm, const jello_bc_module* m, const jello_bc_function* f,
-                          reg_frame* rf, uint32_t dst, uint32_t obj_reg, uint32_t atom_id);
+                          reg_frame* rf, uint32_t dst, uint32_t obj_reg, uint32_t atom_id,
+                          uint32_t slot_hint);
 int vm_obj_set_atom_typed(jello_vm* vm, const jello_bc_module* m, const jello_bc_function* f,
-                          reg_frame* rf, uint32_t val_reg, uint32_t obj_reg, uint32_t atom_id);
+                          reg_frame* rf, uint32_t val_reg, uint32_t obj_reg, uint32_t atom_id,
+                          uint32_t slot_hint);
 int vm_checked_f64_to_i32(jello_vm* vm, double x, uint32_t* out_u32);
 int vm_checked_f64_to_i64(jello_vm* vm, double x, int64_t* out_i64);
 uint32_t vm_kindof_dynamic(jello_value v);
@@ -347,6 +370,11 @@ int vm_exc_dispatch(jello_vm* vm, jello_value* out);
 op_result op_dispatch(exec_ctx* ctx, const jello_insn* ins);
 /* Interpreter loop (runs until completion/trap). */
 jello_exec_status vm_exec_loop(exec_ctx* ctx);
+
+/* --- vm/profile.c --- */
+void jello_vm_set_profile(jello_vm* vm, uint8_t enable);
+void jello_vm_profile_dump(const jello_vm* vm, FILE* out);
+void jello_vm_profile_free(jello_vm* vm);
 
 #endif /* JELLO_INTERNAL_VM_INTERNAL_H */
 

@@ -179,7 +179,9 @@ const frame_layout* vm_get_frame_layout(jello_vm* vm, const jello_bc_module* m, 
   fl->total = (uint32_t)total;
   fl->has_pointer_or_dynamic = has_any;
   /* jit_ineligible: only TRY (unsupported). CALL/CALLR compile via slow path;
-   * self-rec still gets jit_self_rec for eager entry compile. */
+   * self-rec still gets jit_self_rec for eager entry compile. Jmp-loop TCO
+   * (return if … else { self(…) }) has no self CALL in bytecode — detect via
+   * JmpIf + backward Jmp instead. */
   fl->jit_ineligible = 0u;
   fl->jit_self_rec = 0u;
   {
@@ -191,11 +193,17 @@ const frame_layout* vm_get_frame_layout(jello_vm* vm, const jello_bc_module* m, 
         heap_regs = 1u;
     }
     uint8_t saw_self = 0u, saw_try = 0u, saw_non_self_call = 0u;
+    uint8_t saw_jmp_if = 0u, saw_back_jmp = 0u;
     for(uint32_t i = 0; i < f->ninsns; i++) {
       jello_op op = (jello_op)f->insns[i].op;
       if(op == JOP_TRY) {
         saw_try = 1u;
         break;
+      }
+      if(op == JOP_JMP_IF) saw_jmp_if = 1u;
+      if(op == JOP_JMP) {
+        int32_t d = (int32_t)f->insns[i].imm;
+        if(d < 0) saw_back_jmp = 1u;
       }
       if(op == JOP_TAILCALL || op == JOP_TAILCALLR) {
         saw_non_self_call = 1u;
@@ -235,7 +243,9 @@ const frame_layout* vm_get_frame_layout(jello_vm* vm, const jello_bc_module* m, 
       }
     }
     if(saw_try) fl->jit_ineligible = 1u;
-    else if(saw_self && !saw_non_self_call) fl->jit_self_rec = 1u;
+    else if((saw_self && !saw_non_self_call) ||
+            (saw_jmp_if && saw_back_jmp && !saw_non_self_call && !heap_regs))
+      fl->jit_self_rec = 1u;
   }
   return fl;
 }

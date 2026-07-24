@@ -101,6 +101,7 @@ typedef enum jello_jit_ir_op {
   JIR_FUEL_CHECK,
   JIR_BYTES_NEW,    /* a=dst bytes, b=len i32 */
   JIR_BYTES_LEN,    /* a=dst i32, b=bytes */
+  JIR_BYTES_EQ,     /* a=dst bool, b=bytes a, c=bytes b */
   JIR_BYTES_GET_U8, /* a=dst i32, b=bytes, c=idx i32 */
   JIR_BYTES_SET_U8, /* a=val i32, b=bytes, c=idx i32 */
   JIR_BYTES_READ,   /* a=dst, b=bytes, c=off i32, imm=read kind */
@@ -119,6 +120,9 @@ typedef enum jello_jit_ir_op {
   JIR_CONST_FUN,    /* a=dst fun, imm=func_index (flyweight cache) */
   JIR_CLOSURE,      /* a=dst, b=first_cap, c=ncaps, imm=func_index */
   JIR_CONV,         /* a=dst, b=src, imm=jello_jit_conv kind */
+  /* switch_kind: a=src i32 reg, b=ncases, imm=default delta; followed by b× JIR_SWITCH_CASE */
+  JIR_SWITCH,
+  JIR_SWITCH_CASE, /* a=kind tag, imm=case delta (relative to table end) */
 } jello_jit_ir_op;
 
 typedef enum jello_jit_ir_bin {
@@ -129,6 +133,7 @@ typedef enum jello_jit_ir_bin {
   JIR_BIN_MOD,
   JIR_BIN_SHL,
   JIR_BIN_SHR,
+  JIR_BIN_XOR,
 } jello_jit_ir_bin;
 
 typedef enum jello_jit_ir_cmp {
@@ -268,6 +273,12 @@ jello_jit_exit jello_jit_runtime_ret_status(exec_ctx* ctx, uint32_t ret_reg);
 JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_fuel_trap(exec_ctx* ctx);
 jello_jit_exit jello_jit_runtime_fuel_check(exec_ctx* ctx);
 JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_bytes_len(exec_ctx* ctx, uint32_t dst, uint32_t bytes_reg);
+JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_bytes_eq(
+    exec_ctx* ctx,
+    uint32_t dst,
+    uint32_t a_reg,
+    uint32_t b_reg
+);
 JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_bytes_get_u8(
     exec_ctx* ctx,
     uint32_t dst,
@@ -349,6 +360,7 @@ JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_obj_insert_atom(
     uint32_t slot_i
 );
 JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_obj_new(exec_ctx* ctx, uint32_t dst);
+JELLO_JIT_SYSV jello_object* jello_jit_object_new(jello_vm* vm, uint32_t type_id);
 int jello_jit_runtime_cmp_i32(
     exec_ctx* ctx,
     uint32_t dst,

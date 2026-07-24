@@ -402,6 +402,9 @@ JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_ret_self(exec_ctx* ctx, uint32_t
     free(vm->const_fun_cache);
     vm->const_fun_cache = NULL;
     vm->const_fun_cache_len = 0;
+    free(vm->const_bytes_cache);
+    vm->const_bytes_cache = NULL;
+    vm->const_bytes_cache_len = 0;
     vm_enum_nullary_cache_clear(vm);
     free(vm->exc_handlers);
     vm->exc_handlers = NULL;
@@ -533,6 +536,22 @@ JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_bytes_len(exec_ctx* ctx, uint32_
     return JELLO_JIT_EXIT_TRAP;
   }
   vm_store_u32(&ctx->fr->rf, dst, b->length);
+  return JELLO_JIT_EXIT_CONTINUE;
+}
+
+JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_bytes_eq(
+    exec_ctx* ctx,
+    uint32_t dst,
+    uint32_t a_reg,
+    uint32_t b_reg
+) {
+  if(!ctx || !ctx->fr) return JELLO_JIT_EXIT_TRAP;
+  jello_insn ins = {(uint8_t)JOP_BYTES_EQ, (uint8_t)dst, (uint8_t)a_reg, (uint8_t)b_reg, 0};
+  op_result r = op_bytes_eq(ctx, &ins);
+  if(r == OP_TRAP) {
+    jello_jit_deopt_sync_ctx(ctx);
+    return JELLO_JIT_EXIT_TRAP;
+  }
   return JELLO_JIT_EXIT_CONTINUE;
 }
 
@@ -734,7 +753,7 @@ JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_obj_get_atom(
     uint32_t atom_id
 ) {
   if(!ctx || !ctx->fr || !ctx->m || !ctx->f || !ctx->vm) return JELLO_JIT_EXIT_TRAP;
-  if(!vm_obj_get_atom_typed(ctx->vm, ctx->m, ctx->f, &ctx->fr->rf, dst, obj_reg, atom_id)) {
+  if(!vm_obj_get_atom_typed(ctx->vm, ctx->m, ctx->f, &ctx->fr->rf, dst, obj_reg, atom_id, 0)) {
     jello_jit_deopt_sync_ctx(ctx);
     return JELLO_JIT_EXIT_TRAP;
   }
@@ -748,7 +767,7 @@ JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_obj_set_atom(
     uint32_t atom_id
 ) {
   if(!ctx || !ctx->fr || !ctx->m || !ctx->f || !ctx->vm) return JELLO_JIT_EXIT_TRAP;
-  if(!vm_obj_set_atom_typed(ctx->vm, ctx->m, ctx->f, &ctx->fr->rf, val_reg, obj_reg, atom_id)) {
+  if(!vm_obj_set_atom_typed(ctx->vm, ctx->m, ctx->f, &ctx->fr->rf, val_reg, obj_reg, atom_id, 0)) {
     jello_jit_deopt_sync_ctx(ctx);
     return JELLO_JIT_EXIT_TRAP;
   }
@@ -778,16 +797,19 @@ JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_obj_insert_atom(
   return JELLO_JIT_EXIT_CONTINUE;
 }
 
+JELLO_JIT_SYSV jello_object* jello_jit_object_new(jello_vm* vm, uint32_t type_id) {
+  return jello_object_new(vm, type_id);
+}
+
 JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_obj_new(exec_ctx* ctx, uint32_t dst) {
-  if(!ctx || !ctx->fr || dst > 255u) return JELLO_JIT_EXIT_TRAP;
-  jello_insn ins = {0};
-  ins.op = (uint8_t)JOP_OBJ_NEW;
-  ins.a = (uint8_t)dst;
-  op_result r = op_obj_new(ctx, &ins);
-  if(r == OP_TRAP || (ctx->vm && ctx->vm->exc_pending)) {
+  if(!ctx || !ctx->fr || !ctx->f || !ctx->vm || dst > 255u) return JELLO_JIT_EXIT_TRAP;
+  uint32_t type_id = ctx->f->reg_types[dst];
+  jello_object* o = jello_object_new(ctx->vm, type_id);
+  if(!o) {
     jello_jit_deopt_sync_ctx(ctx);
     return JELLO_JIT_EXIT_TRAP;
   }
+  vm_store_ptr(&ctx->fr->rf, dst, o);
   return JELLO_JIT_EXIT_CONTINUE;
 }
 
@@ -835,14 +857,21 @@ JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_assert(exec_ctx* ctx, uint32_t c
 }
 
 JELLO_JIT_SYSV jello_jit_exit jello_jit_runtime_const_bytes(exec_ctx* ctx, uint32_t dst, uint32_t idx) {
-  if(!ctx || !ctx->fr || !ctx->m || !ctx->f || !ctx->vm || dst > 255u) return JELLO_JIT_EXIT_TRAP;
-  jello_insn ins = {0};
-  ins.op = (uint8_t)JOP_CONST_BYTES;
-  ins.a = (uint8_t)dst;
-  ins.imm = idx;
-  op_result r = op_const_bytes(ctx, &ins);
-  jello_jit_deopt_sync_ctx(ctx);
-  if(r == OP_TRAP || ctx->vm->exc_pending) return JELLO_JIT_EXIT_TRAP;
+  if(!ctx || !ctx->fr || !ctx->f || !ctx->vm || !ctx->m || dst > 255u) return JELLO_JIT_EXIT_TRAP;
+  jello_vm* vm = ctx->vm;
+  const jello_bc_module* m = ctx->m;
+  if(idx >= vm->const_bytes_cache_len || idx >= m->nconst_bytes) return JELLO_JIT_EXIT_TRAP;
+  jello_bytes** cache = (jello_bytes**)vm->const_bytes_cache;
+  jello_bytes* b = cache[idx];
+  if(!b) {
+    uint32_t len = m->const_bytes_len[idx];
+    uint32_t off = m->const_bytes_off[idx];
+    uint32_t type_id = ctx->f->reg_types[dst];
+    b = jello_bytes_new(vm, type_id, len);
+    if(len > 0) memcpy(b->data, m->const_bytes_data + off, len);
+    cache[idx] = b;
+  }
+  vm_store_ptr(&ctx->fr->rf, dst, b);
   return JELLO_JIT_EXIT_CONTINUE;
 }
 

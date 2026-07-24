@@ -87,18 +87,23 @@ op_result op_const_bytes(exec_ctx* ctx, const jello_insn* ins) {
   call_frame* fr = ctx->fr;
 
   const uint32_t idx = ins->imm;
-  uint32_t len = 0;
-  uint32_t off = 0;
-  if(idx < m->nconst_bytes) {
-    len = m->const_bytes_len[idx];
-    off = m->const_bytes_off[idx];
-  } else {
-    (void)jello_vm_trap(vm, JELLO_TRAP_BOUNDS, "const_bytes out of range");
-    return OP_CONTINUE;
+  if(idx >= vm->const_bytes_cache_len) {
+    if(idx >= m->nconst_bytes) {
+      (void)jello_vm_trap(vm, JELLO_TRAP_BOUNDS, "const_bytes out of range");
+      return OP_CONTINUE;
+    }
+    jello_vm_panic();
   }
-  uint32_t type_id = f->reg_types[ins->a];
-  jello_bytes* b = jello_bytes_new(vm, type_id, len);
-  if(len > 0) memcpy(b->data, m->const_bytes_data + off, len);
+  jello_bytes** cache = (jello_bytes**)vm->const_bytes_cache;
+  jello_bytes* b = cache[idx];
+  if(!b) {
+    uint32_t len = m->const_bytes_len[idx];
+    uint32_t off = m->const_bytes_off[idx];
+    uint32_t type_id = f->reg_types[ins->a];
+    b = jello_bytes_new(vm, type_id, len);
+    if(len > 0) memcpy(b->data, m->const_bytes_data + off, len);
+    cache[idx] = b;
+  }
   vm_store_ptr(&fr->rf, ins->a, b);
   return OP_CONTINUE;
 }

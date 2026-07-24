@@ -41,12 +41,20 @@ static jello_exec_status exec_entry(jello_vm* vm, const jello_bc_module* m, cons
   free(vm->const_fun_cache);
   vm->const_fun_cache = NULL;
   vm->const_fun_cache_len = 0;
+  free(vm->const_bytes_cache);
+  vm->const_bytes_cache = NULL;
+  vm->const_bytes_cache_len = 0;
   vm_enum_nullary_cache_clear(vm);
   if(m && m->nfuncs) {
     size_t cache_len = (size_t)JELLO_NATIVE_BUILTIN_COUNT + (size_t)m->nfuncs;
     vm->const_fun_cache = calloc(cache_len, sizeof(void*));
     if(!vm->const_fun_cache) jello_vm_panic();
     vm->const_fun_cache_len = (uint32_t)cache_len;
+  }
+  if(m && m->nconst_bytes) {
+    vm->const_bytes_cache = calloc(m->nconst_bytes, sizeof(void*));
+    if(!vm->const_bytes_cache) jello_vm_panic();
+    vm->const_bytes_cache_len = m->nconst_bytes;
   }
   vm_enum_nullary_cache_init(vm, m ? m->ntypes : 0u);
   free(vm->exc_handlers);
@@ -104,12 +112,20 @@ jello_exec_status jello_vm_exec_status_chunk(jello_vm* vm, const jello_bc_module
   free(vm->const_fun_cache);
   vm->const_fun_cache = NULL;
   vm->const_fun_cache_len = 0;
+  free(vm->const_bytes_cache);
+  vm->const_bytes_cache = NULL;
+  vm->const_bytes_cache_len = 0;
   vm_enum_nullary_cache_clear(vm);
   if(m && m->nfuncs) {
     size_t cache_len = (size_t)JELLO_NATIVE_BUILTIN_COUNT + (size_t)m->nfuncs;
     vm->const_fun_cache = calloc(cache_len, sizeof(void*));
     if(!vm->const_fun_cache) jello_vm_panic();
     vm->const_fun_cache_len = (uint32_t)cache_len;
+  }
+  if(m && m->nconst_bytes) {
+    vm->const_bytes_cache = calloc(m->nconst_bytes, sizeof(void*));
+    if(!vm->const_bytes_cache) jello_vm_panic();
+    vm->const_bytes_cache_len = m->nconst_bytes;
   }
   vm_enum_nullary_cache_init(vm, m ? m->ntypes : 0u);
   free(vm->exc_handlers);
@@ -153,12 +169,20 @@ jello_exec_status jello_vm_exec_status_closure(jello_vm* vm, const jello_bc_modu
   free(vm->const_fun_cache);
   vm->const_fun_cache = NULL;
   vm->const_fun_cache_len = 0;
+  free(vm->const_bytes_cache);
+  vm->const_bytes_cache = NULL;
+  vm->const_bytes_cache_len = 0;
   vm_enum_nullary_cache_clear(vm);
   if(m && m->nfuncs) {
     size_t cache_len = (size_t)JELLO_NATIVE_BUILTIN_COUNT + (size_t)m->nfuncs;
     vm->const_fun_cache = calloc(cache_len, sizeof(void*));
     if(!vm->const_fun_cache) jello_vm_panic();
     vm->const_fun_cache_len = (uint32_t)cache_len;
+  }
+  if(m && m->nconst_bytes) {
+    vm->const_bytes_cache = calloc(m->nconst_bytes, sizeof(void*));
+    if(!vm->const_bytes_cache) jello_vm_panic();
+    vm->const_bytes_cache_len = m->nconst_bytes;
   }
   vm_enum_nullary_cache_init(vm, m ? m->ntypes : 0u);
   free(vm->exc_handlers);

@@ -42,6 +42,9 @@ static jello_jit_ir_bin bin_from_op(jello_op op) {
     case JOP_SHR_I32:
     case JOP_SHR_I64:
       return JIR_BIN_SHR;
+    case JOP_BITXOR_I32:
+    case JOP_BITXOR_I64:
+      return JIR_BIN_XOR;
     default:
       return JIR_BIN_ADD;
   }
@@ -256,6 +259,29 @@ static int lower_one(const jello_bc_module* m, const jello_bc_function* f, uint3
       out.a = ins->a;
       out.imm = (int32_t)pc + 1 + (int32_t)ins->imm;
       break;
+    case JOP_CASE_KIND:
+      /* Emitted inline after JOP_SWITCH_KIND; not a standalone IR site. */
+      return 0;
+    case JOP_SWITCH_KIND: {
+      uint32_t ncases = (uint32_t)ins->b;
+      if(pc + 1u + ncases > f->ninsns) return -1;
+      out.op = JIR_SWITCH;
+      out.a = ins->a;
+      out.b = (uint16_t)ncases;
+      out.imm = (int32_t)ins->imm;
+      if(append_ir(ir, out) != 0) return -1;
+      for(uint32_t ci = 0; ci < ncases; ci++) {
+        const jello_insn* cins = &f->insns[pc + 1u + ci];
+        if((jello_op)cins->op != JOP_CASE_KIND) return -1;
+        jello_jit_ir_insn cs = {0};
+        cs.op = JIR_SWITCH_CASE;
+        cs.bc_pc = pc;
+        cs.a = (uint16_t)cins->a;
+        cs.imm = (int32_t)cins->imm;
+        if(append_ir(ir, cs) != 0) return -1;
+      }
+      return 0;
+    }
     case JOP_CONST_I32:
       out.op = JIR_LOAD_I32;
       out.a = ins->a;
@@ -300,6 +326,7 @@ static int lower_one(const jello_bc_module* m, const jello_bc_function* f, uint3
     case JOP_MOD_I32:
     case JOP_SHL_I32:
     case JOP_SHR_I32:
+    case JOP_BITXOR_I32:
       out.op = JIR_BIN_I32;
       out.a = ins->a;
       out.b = ins->b;
@@ -313,6 +340,7 @@ static int lower_one(const jello_bc_module* m, const jello_bc_function* f, uint3
     case JOP_MOD_I64:
     case JOP_SHL_I64:
     case JOP_SHR_I64:
+    case JOP_BITXOR_I64:
       out.op = JIR_BIN_I64;
       out.a = ins->a;
       out.b = ins->b;
@@ -664,6 +692,12 @@ static int lower_one(const jello_bc_module* m, const jello_bc_function* f, uint3
       out.c = ins->c;
       out.imm = JIT_BWRITE_F32_BE;
       break;
+    case JOP_BYTES_EQ:
+      out.op = JIR_BYTES_EQ;
+      out.a = ins->a;
+      out.b = ins->b;
+      out.c = ins->c;
+      break;
     case JOP_ARRAY_LEN:
       out.op = JIR_ARRAY_LEN;
       out.a = ins->a;
@@ -790,9 +824,16 @@ jello_jit_ir_func jello_jit_ir_build(const jello_bc_module* m, const jello_bc_fu
   }
   ir.nregs = f->nregs;
   for(uint32_t pc = 0; pc < f->ninsns; pc++) {
-    if((jello_op)f->insns[pc].op == JOP_TRY) {
+    jello_op op = (jello_op)f->insns[pc].op;
+    if(op == JOP_TRY) {
       ir.ok = 0;
       strcpy(ir.reject_reason, "try not supported in jit v1");
+      jello_jit_ir_func_free(&ir);
+      return ir;
+    }
+    if(op == JOP_SPILL_PUSH || op == JOP_SPILL_POP) {
+      ir.ok = 0;
+      strcpy(ir.reject_reason, "spill ops not supported in jit");
       jello_jit_ir_func_free(&ir);
       return ir;
     }

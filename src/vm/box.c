@@ -187,6 +187,19 @@ int vm_store_num_inplace(jello_vm* vm, const jello_bc_module* m, const jello_bc_
         return 1;
       }
       break;
+    case JELLO_T_I8:
+    case JELLO_T_I16:
+    case JELLO_T_I32:
+      if(jello_is_i32(cur)) {
+        *slot = jello_make_i32((int32_t)vm_load_u32(rf, src_reg));
+        return 1;
+      }
+      if(jello_is_box_i64(cur)) {
+        int32_t x = (int32_t)jello_as_box_i64(cur);
+        *slot = jello_make_i32(x);
+        return 1;
+      }
+      break;
     default:
       break;
   }

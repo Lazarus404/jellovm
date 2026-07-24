@@ -642,6 +642,12 @@ jello_bc_result jello_bc_validate_insn(const jello_bc_module* m,
       if(ins->a >= nregs || ins->b >= nregs || ins->c >= nregs) return err(JELLO_BC_BAD_FORMAT, "bytes write reg out of range", 0);
       if(rk(m, reg_types, ins->a) != JELLO_T_F32 || rk(m, reg_types, ins->b) != JELLO_T_BYTES || rk(m, reg_types, ins->c) != JELLO_T_I32) return err(JELLO_BC_BAD_FORMAT, "bytes_write_f32 types required", 0);
       return ok();
+    case JOP_BYTES_EQ:
+      if(ins->a >= nregs || ins->b >= nregs || ins->c >= nregs) return err(JELLO_BC_BAD_FORMAT, "bytes eq reg out of range", 0);
+      if(rk(m, reg_types, ins->a) != JELLO_T_BOOL ||
+         rk(m, reg_types, ins->b) != JELLO_T_BYTES ||
+         rk(m, reg_types, ins->c) != JELLO_T_BYTES) return err(JELLO_BC_BAD_FORMAT, "bytes_eq types required", 0);
+      return ok();
     case JOP_OBJ_NEW:
       if(ins->a >= nregs) return err(JELLO_BC_BAD_FORMAT, "obj new reg out of range", 0);
       if(rk(m, reg_types, ins->a) != JELLO_T_OBJECT) return err(JELLO_BC_BAD_FORMAT, "obj_new dst must be object", 0);

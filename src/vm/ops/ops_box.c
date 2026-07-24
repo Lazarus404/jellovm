@@ -63,11 +63,13 @@ op_result op_from_dyn_i32(exec_ctx* ctx, const jello_insn* ins) {
   call_frame* fr = ctx->fr;
 
   jello_value v = vm_load_val(&fr->rf, ins->b);
-  if(!jello_is_i32(v)) {
+  int ok;
+  uint32_t val = from_dyn_int_value(vm, v, &ok);
+  if(!ok) {
     (void)jello_vm_trap(vm, JELLO_TRAP_TYPE_MISMATCH, "from_dyn_i32 type mismatch");
     return OP_CONTINUE;
   }
-  vm_store_u32(&fr->rf, ins->a, (uint32_t)jello_as_i32(v));
+  vm_store_u32(&fr->rf, ins->a, val);
   return OP_CONTINUE;
 }
 
