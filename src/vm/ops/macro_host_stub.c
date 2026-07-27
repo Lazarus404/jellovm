@@ -27,6 +27,7 @@ int32_t jello_rust_macro_parse(const char* src, size_t src_len, const char* kind
 int32_t jello_rust_macro_gensym(const char* prefix, size_t prefix_len, int32_t* out_id);
 int32_t jello_rust_macro_quote(uint32_t template_idx, int32_t* out_id);
 int32_t jello_rust_macro_param(uint32_t param_idx, int32_t* out_id);
+int32_t jello_rust_macro_splice(int32_t frag_id, int32_t* out_id);
 int32_t jello_rust_macro_emit_all(int32_t frag_id);
 
 JELLO_WEAK int32_t jello_rust_macro_emit(int32_t frag_id) {
@@ -64,6 +65,12 @@ JELLO_WEAK int32_t jello_rust_macro_quote(uint32_t template_idx, int32_t* out_id
 
 JELLO_WEAK int32_t jello_rust_macro_param(uint32_t param_idx, int32_t* out_id) {
   (void)param_idx;
+  (void)out_id;
+  return macro_host_unavailable();
+}
+
+JELLO_WEAK int32_t jello_rust_macro_splice(int32_t frag_id, int32_t* out_id) {
+  (void)frag_id;
   (void)out_id;
   return macro_host_unavailable();
 }

@@ -12,6 +12,7 @@ extern int32_t jello_rust_macro_parse(const char* src, size_t src_len, const cha
 extern int32_t jello_rust_macro_gensym(const char* prefix, size_t prefix_len, int32_t* out_id);
 extern int32_t jello_rust_macro_quote(uint32_t template_idx, int32_t* out_id);
 extern int32_t jello_rust_macro_param(uint32_t param_idx, int32_t* out_id);
+extern int32_t jello_rust_macro_splice(int32_t frag_id, int32_t* out_id);
 extern int32_t jello_rust_macro_emit_all(int32_t frag_id);
 
 #define MACRO_OP_EMIT 0u
@@ -84,8 +85,7 @@ static void native_macro_host(exec_ctx* ctx, const jello_insn* ins, uint32_t fir
     }
     case MACRO_OP_SPLICE:
       if(nargs < 1u) { jello_vm_trap(ctx->vm, JELLO_TRAP_THROWN, "Macro.__splice expects fragment id"); return; }
-      out_id = load_i32_arg(fr, arg0);
-      rc = 0;
+      rc = jello_rust_macro_splice(load_i32_arg(fr, arg0), &out_id);
       break;
     case MACRO_OP_PARAM: {
       if(nargs < 1u) { jello_vm_trap(ctx->vm, JELLO_TRAP_THROWN, "Macro.__param expects index"); return; }
