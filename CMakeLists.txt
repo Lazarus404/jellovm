@@ -50,6 +50,7 @@ if(MINGW)
   option(JELLOVM_SHARED "Build jellovm as a DLL (required for .jdll plugins on MinGW)" ON)
 endif()
 option(JELLOVM_BUILD_STD "Build std.jdll reference plugin" ON)
+option(JELLOVM_MACRO_HOST_STUB "No-op macro host stubs for standalone jellovm (off for embed-vm)" ON)
 
 if(JELLOVM_BUILD_STD)
   # Reference JDLL plugins (std.jdll, …). Must be registered before ctest when tests are enabled.
@@ -82,6 +83,7 @@ add_library(jellovm ${_jellovm_lib_type}
   src/vm/ops/ops_const.c
   src/vm/ops/ops_call.c
   src/vm/ops/ops_builtins.c
+  src/vm/ops/ops_macro_host.c
   src/vm/math.c
   src/vm/ops/ops_arith.c
   src/vm/ops/ops_box.c
@@ -110,6 +112,10 @@ add_library(jellovm ${_jellovm_lib_type}
   src/boot/boot.c
   src/jit/jit_config.c
 )
+
+if(JELLOVM_MACRO_HOST_STUB)
+  target_sources(jellovm PRIVATE src/vm/ops/macro_host_stub.c)
+endif()
 
 if(JELLOVM_ENABLE_JIT)
   if(MSVC)

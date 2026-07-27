@@ -23,7 +23,7 @@
 #define JELLO_NATIVE_BUILTIN_SYSTEM_ASSERT_EQ 9u
 #define JELLO_NATIVE_BUILTIN_DYN_EQ 10u
 #define JELLO_NATIVE_BUILTIN_DEEP_EQUAL 11u
-#define JELLO_NATIVE_BUILTIN_COUNT 46u
+#define JELLO_NATIVE_BUILTIN_COUNT 47u
 
 #include <jello/internal/math.h>
 
@@ -483,6 +483,10 @@ void jello_invoke_native_builtin(exec_ctx* ctx, const jello_insn* ins, uint32_t 
   }
   if(func_index >= JELLO_NATIVE_BUILTIN_MATH_ABS && func_index <= JELLO_NATIVE_BUILTIN_MATH_SIGN) {
     jello_invoke_math_native(ctx, ins, func_index, first_arg_reg);
+    return;
+  }
+  if(func_index == 46u) {
+    jello_invoke_macro_host_native(ctx, ins, first_arg_reg);
     return;
   }
   jello_vm_panic();

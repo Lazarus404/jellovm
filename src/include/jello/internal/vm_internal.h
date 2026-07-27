@@ -340,9 +340,10 @@ int vm_push_frame_closure_from_values(jello_vm* vm, const jello_bc_module* m, je
                                       const jello_value* args, uint32_t nargs);
 
 /* --- ops/ops_builtins.c --- */
-#define JELLO_NATIVE_BUILTIN_COUNT 46u
+#define JELLO_NATIVE_BUILTIN_COUNT 47u
 int jello_is_native_builtin(uint32_t func_index);
 void jello_invoke_native_builtin(exec_ctx* ctx, const jello_insn* ins, uint32_t func_index, uint32_t first_arg_reg);
+void jello_invoke_macro_host_native(exec_ctx* ctx, const jello_insn* ins, uint32_t first_arg_reg);
 int jello_is_jdll_prim(uint32_t func_index);
 
 int jello_value_is_copy_safe(jello_value v);
