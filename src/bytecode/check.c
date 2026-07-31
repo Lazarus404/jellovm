@@ -229,6 +229,7 @@ jello_bc_result jello_bc_validate_insn(const jello_bc_module* m,
     case JOP_ADD_I32:
     case JOP_SUB_I32:
     case JOP_MUL_I32:
+    case JOP_DIV_I32:
     case JOP_MOD_I32:
     case JOP_SHL_I32:
     case JOP_SHR_I32:
@@ -252,6 +253,7 @@ jello_bc_result jello_bc_validate_insn(const jello_bc_module* m,
     case JOP_ADD_I64:
     case JOP_SUB_I64:
     case JOP_MUL_I64:
+    case JOP_DIV_I64:
     case JOP_MOD_I64:
     case JOP_SHL_I64:
     case JOP_SHR_I64:

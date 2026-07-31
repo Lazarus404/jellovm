@@ -1,18 +1,44 @@
 # std.jdll — Neko std.ndll subset
 
-include("${CMAKE_CURRENT_LIST_DIR}/pcre2.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/usrsctp.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/openssl.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/pcre2.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/usrsctp.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/openssl.cmake")
 
 jello_jdll_embed_abi("${CMAKE_CURRENT_SOURCE_DIR}/std.jdll.abi" _std_abi_embed_c)
 
 add_library(std_jdll SHARED
-  init.c sys.c file.c process.c thread.c channel.c task.c poll.c io_common.c net.c tls_crypto.c tls_io.c sctp.c random.c md5.c concat.c date.c unicode.c regexp.c
+  init.c
+  core/concat.c
+  core/unicode.c
+  core/regexp.c
+  crypto/random.c
+  crypto/md5.c
+  sys/sys.c
+  sys/process.c
+  sys/date.c
+  sys/power.c
+  sys/thermal.c
+  io/file.c
+  io/io_common.c
+  io/poll.c
+  io/net/net.c
+  io/net/tls_crypto.c
+  io/net/tls_io.c
+  io/net/sctp.c
+  concurrency/thread.c
+  concurrency/channel.c
+  concurrency/task.c
   "${_std_abi_embed_c}"
 )
 target_include_directories(std_jdll PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../../src/include"
   "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/core"
+  "${CMAKE_CURRENT_SOURCE_DIR}/crypto"
+  "${CMAKE_CURRENT_SOURCE_DIR}/sys"
+  "${CMAKE_CURRENT_SOURCE_DIR}/io"
+  "${CMAKE_CURRENT_SOURCE_DIR}/io/net"
+  "${CMAKE_CURRENT_SOURCE_DIR}/concurrency"
   "${pcre2_SOURCE_DIR}/src"
   "${usrsctp_SOURCE_DIR}/usrsctplib"
 )
@@ -35,6 +61,9 @@ if(WIN32)
 endif()
 
 if(APPLE)
+  find_library(JELLO_IOKIT IOKit REQUIRED)
+  find_library(JELLO_COREFOUNDATION CoreFoundation REQUIRED)
+  target_link_libraries(std_jdll PRIVATE ${JELLO_IOKIT} ${JELLO_COREFOUNDATION})
   target_link_options(std_jdll PRIVATE "-undefined" "dynamic_lookup")
 elseif(MINGW)
   if(JELLOVM_SHARED)

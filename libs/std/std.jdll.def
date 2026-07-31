@@ -1,19 +1,27 @@
 # std.jdll export manifest — consumed by jdll-bindgen / gen_std_abi
 library std
 
+# sys — clock, environment, sleep
 time : () -> I32
 get_env : (Bytes) -> Bytes
 sleep : (I32) -> I32
+
+# io — filesystem
 file_exists : (Bytes) -> Bool
 file_read : (Bytes) -> Bytes
 file_write : (Bytes, Bytes) -> Bool
 file_open : (Bytes) -> Abstract
 file_close : (Abstract) -> Bool
 file_read_handle : (Abstract) -> Bytes
+
+# crypto — random, digest
 random_int : (I32, I32) -> I32
 md5 : (Bytes) -> Bytes
+
+# core — bytes helpers
 bytes_concat : (Bytes...) -> Bytes
 
+# sys — dates
 date_now : () -> I32
 date_new : (Bytes) -> I32
 date_format : (I32, Bytes) -> Bytes
@@ -22,6 +30,7 @@ date_get_tz : (I32) -> I32
 date_set_hour : (I32, I32, I32, I32) -> I32
 date_set_day : (I32, I32, I32, I32) -> I32
 
+# core — unicode
 unicode_validate : (Bytes) -> Bool
 unicode_length : (Bytes) -> I32
 unicode_get : (Bytes, I32) -> I32
@@ -34,6 +43,7 @@ unicode_buf_bytes : (Abstract) -> Bytes
 unicode_buf_length : (Abstract) -> I32
 unicode_buf_size : (Abstract) -> I32
 
+# core — regexp
 regexp_compile : (Bytes, Bytes) -> Abstract
 regexp_source : (Abstract) -> Bytes
 regexp_flags : (Abstract) -> Bytes
@@ -50,6 +60,7 @@ regexp_replace : (Bytes, Abstract, Bytes) -> Bytes
 regexp_escape_literal : (Bytes) -> Bytes
 regexp_advance : (Bytes, Abstract) -> Bytes
 
+# sys — subprocess
 process_run : (Bytes) -> Abstract
 process_pid : (Abstract) -> I32
 process_wait : (Abstract) -> I32
@@ -59,16 +70,19 @@ process_read_stderr : (Abstract) -> Bytes
 process_write_stdin : (Abstract, Bytes) -> Bool
 process_close_stdin : (Abstract) -> Bool
 
+# concurrency — threads
 thread_spawn : (Function, Dynamic...) -> Abstract
 thread_join : (Abstract) -> Dynamic
 thread_id : () -> I32
 
+# concurrency — channels
 channel_new : () -> Abstract
 channel_send : (Abstract, Dynamic) -> Bool
 channel_recv : (Abstract) -> Dynamic
 channel_try_recv : (Abstract) -> Dynamic
 channel_close : (Abstract) -> Bool
 
+# io — poll / event loop
 poll_fd : (I32, I32, I32) -> I32
 poll_many : (Dynamic, I32, I32) -> I32
 monotonic_ms : () -> I32
@@ -78,17 +92,22 @@ wakeup_poll_fd : (Abstract) -> I32
 wakeup_signal : (Abstract) -> Bool
 wakeup_drain : (Abstract) -> Bool
 
+# io.net — addresses
 addr_parse : (Bytes) -> Abstract
 addr_resolve : (Bytes, I32) -> Dynamic
 addr_host : (Dynamic) -> Bytes
 addr_port : (Dynamic) -> I32
 addr_is_abstract : (Dynamic) -> Bool
+
+# io.net — UDP
 udp_bind : (Abstract) -> Abstract
 udp_try_recv_from : (Abstract, I32) -> Dynamic
 udp_send_to : (Abstract, Bytes, Abstract, I32) -> I32
 udp_poll_fd : (Abstract) -> I32
 udp_close : (Abstract) -> Bool
 udp_set_broadcast : (Abstract, Bool) -> Bool
+
+# io.net — TCP
 tcp_connect : (Abstract) -> Abstract
 tcp_connect_timeout : (Abstract, I32) -> Abstract
 tcp_listen : (Abstract, I32) -> Abstract
@@ -106,6 +125,7 @@ tcp_set_keepalive : (Abstract, Bool) -> Bool
 net_probe_port : (I32, I32) -> I32
 net_probe_port_pair : (I32, I32) -> I32
 
+# crypto — PEM / X509 / TLS context
 pem_decode : (Bytes) -> Dynamic
 x509_parse : (Bytes) -> Dynamic
 x509_verify_chain : (Bytes, Abstract) -> Bool
@@ -116,6 +136,7 @@ tls_context_set_private_key : (Abstract, Bytes) -> Bool
 tls_context_set_alpn : (Abstract, Bytes) -> Bool
 tls_context_set_sni : (Abstract, Bytes) -> Bool
 
+# io.net — TLS streams
 tls_stream_client : (Abstract, Abstract) -> Abstract
 tls_stream_server : (Abstract, Abstract) -> Abstract
 tls_handshake : (Abstract) -> I32
@@ -124,6 +145,7 @@ tls_try_write : (Abstract, Bytes) -> I32
 tls_poll_fd : (Abstract) -> I32
 tls_close : (Abstract) -> Bool
 
+# io.net — DTLS streams
 dtls_stream_client : (Abstract, Abstract, Abstract) -> Abstract
 dtls_stream_server : (Abstract, Abstract) -> Abstract
 dtls_handshake : (Abstract) -> I32
@@ -132,6 +154,7 @@ dtls_try_write : (Abstract, Bytes) -> I32
 dtls_poll_fd : (Abstract) -> I32
 dtls_close : (Abstract) -> Bool
 
+# io.net — SCTP
 sctp_set_encaps_port : (I32) -> Bool
 sctp_bind : (Abstract) -> Abstract
 sctp_connect : (Abstract) -> Abstract
@@ -142,3 +165,25 @@ sctp_try_send : (Abstract, Bytes, I32, I32) -> I32
 sctp_poll_fd : (Abstract) -> I32
 sctp_close : (Abstract) -> Bool
 sctp_bound_port : (Abstract) -> I32
+
+# sys — power
+power_snapshot : () -> Abstract
+power_release : (Abstract) -> Bool
+power_supply_count : (Abstract) -> I32
+power_supply_name : (Abstract, I32) -> Bytes
+power_supply_type : (Abstract, I32) -> Bytes
+power_supply_present : (Abstract, I32) -> Bool
+power_supply_status : (Abstract, I32) -> Bytes
+power_percent : (Abstract, I32) -> I32
+power_on_ac : (Abstract) -> Bool
+power_primary_percent : (Abstract) -> I32
+power_voltage_uv : (Abstract, I32) -> I32
+power_current_ua : (Abstract, I32) -> I32
+power_energy_uwh : (Abstract, I32) -> I32
+
+# sys — thermal
+thermal_zone_count : (Abstract) -> I32
+thermal_zone_name : (Abstract, I32) -> Bytes
+thermal_zone_type : (Abstract, I32) -> Bytes
+thermal_zone_temp_mc : (Abstract, I32) -> I32
+thermal_zone_trip_mc : (Abstract, I32) -> I32
