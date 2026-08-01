@@ -218,6 +218,28 @@ op_result op_tailcallr(exec_ctx* ctx, const jello_insn* ins) {
     return OP_CONTINUE;
   }
   uint32_t fi = fn->func_index;
+  if(jello_is_jdll_prim(fi)) {
+    if(!jello_jdll_invoke_prim(ctx, ins, fn, ins->imm)) return OP_CONTINUE;
+    uint32_t caller_dst = fr->caller_dst;
+    uint8_t has_caller = fr->has_caller;
+    if(fr->exc_base > vm->exc_handlers_len) jello_vm_panic();
+    vm->exc_handlers_len = fr->exc_base;
+    if(!has_caller) {
+      jello_value ret = vm_box_from_typed(vm, m, f, &fr->rf, ins->a);
+      vm_rf_release(vm, &fr->rf);
+      vm->call_frames_len--;
+      if(ctx->out) *ctx->out = ret;
+      return OP_RETURN;
+    }
+    call_frame* frames = (call_frame*)vm->call_frames;
+    if(vm->call_frames_len < 2u) jello_vm_panic();
+    call_frame* caller = &frames[vm->call_frames_len - 2u];
+    jello_value ret = vm_box_from_typed(vm, m, f, &fr->rf, ins->a);
+    vm_rf_release(vm, &fr->rf);
+    vm->call_frames_len--;
+    vm_store_from_boxed(vm, m, caller->f, &caller->rf, caller_dst, ret);
+    return OP_CONTINUE;
+  }
   if(jello_is_native_builtin(fi)) {
     jello_invoke_native_builtin(ctx, ins, fi, ins->imm);
     uint32_t caller_dst = fr->caller_dst;

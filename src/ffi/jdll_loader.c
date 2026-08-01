@@ -174,20 +174,6 @@ const char* jello_discovery_entry_path(const char* argv_entry) {
 }
 
 static void collect_jdll_roots_c(const char* entry_path, str_list* out) {
-  char* dir = path_dirname_dup(entry_path);
-  if(!dir) return;
-  sl_push(out, path_join2(dir, "jdll"));
-  sl_push(out, strdup(dir));
-  char* cur = strdup(dir);
-  free(dir);
-  for(int i = 0; i < 12 && cur; i++) {
-    char* slash = (char*)path_last_sep(cur);
-    if(!slash || slash == cur) break;
-    *slash = 0;
-    sl_push(out, path_join2(cur, "jdll"));
-    if(strcmp(cur, ".") == 0) break;
-  }
-  free(cur);
   const char* env = getenv("JELLO_JDLL_PATH");
   if(env && *env) {
     const char* p = env;
@@ -211,6 +197,20 @@ static void collect_jdll_roots_c(const char* entry_path, str_list* out) {
       p = sep + 1;
     }
   }
+  char* dir = path_dirname_dup(entry_path);
+  if(!dir) return;
+  sl_push(out, path_join2(dir, "jdll"));
+  sl_push(out, strdup(dir));
+  char* cur = strdup(dir);
+  free(dir);
+  for(int i = 0; i < 12 && cur; i++) {
+    char* slash = (char*)path_last_sep(cur);
+    if(!slash || slash == cur) break;
+    *slash = 0;
+    sl_push(out, path_join2(cur, "jdll"));
+    if(strcmp(cur, ".") == 0) break;
+  }
+  free(cur);
 }
 
 static char* resolve_jdll_key(const char* entry_path, const char* key) {
